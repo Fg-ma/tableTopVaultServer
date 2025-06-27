@@ -4,8 +4,9 @@
 
 int main() {
   uWS::SSLApp app({
-    .key_file_name = "tls/table-top-vault-server-key.pem",
-    .cert_file_name = "tls/table-top-vault-server.pem"
+    .key_file_name = "certs/table-top-vault-server-key.pem",
+    .cert_file_name = "certs/table-top-vault-server.pem",
+    .dh_params_file_name = "certs/table-top-vault-server-dhparam.pem"
   });
 
   app.get("/", [](auto *res, auto *req) {
