@@ -1,3 +1,5 @@
 cd build
 cmake ..
 make
+
+npx tsc --watch
