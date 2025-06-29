@@ -227,7 +227,7 @@ int main() {
 
           int num_uses = requestJson.value("num_uses", 1);
           std::vector<std::string> requestedPolicies =
-              requestJson.value("policies", std::vector<std::string>{"default"});
+              requestJson.value("policies", std::vector<std::string>{});
 
           // Generate a real one-time Vault token:
           std::string oneTimeToken =
