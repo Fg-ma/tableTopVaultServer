@@ -1,0 +1,51 @@
+@import url("https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;700&family=K2D:wght@400;700&display=swap");
+
+:root {
+  /* Reds */
+  --fg-red-dark: #b20203;
+  --fg-red: #d40213;
+  --fg-red-light: #e62833;
+  /* Whites */
+  --fg-white: #f2f2f2;
+  --fg-off-white: #d6d6d6;
+  /* Blacks/Tones */
+  --tone-black-1: #090909;
+  --tone-black-2: #161616;
+  --tone-black-3: #1a1a1a;
+  --tone-black-4: #212121;
+  --tone-black-5: #313131;
+  --tone-black-6: #3e3e3e;
+  --tone-black-7: #515151;
+}
+
+.login-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+.login-card {
+  background: var(--tone-black-3);
+  padding: 2rem;
+  border-radius: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.login-field label,
+.login-field input {
+  font-family: "K2D", sans-serif;
+}
+.error-msg {
+  color: var(--fg-red);
+  font-size: 0.85rem;
+  height: 1rem;
+}

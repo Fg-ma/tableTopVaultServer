@@ -6,7 +6,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <random>
 #include <sstream>
+#include <unordered_set>
 
 #include "lib/json.hpp"
 #include "lib/uWebSockets/src/App.h"
@@ -21,6 +23,9 @@ std::string dh_file =
 std::unordered_map<std::string, nlohmann::json> pendingRequests;
 std::unordered_map<std::string, std::string> completedRequests;
 std::string vaultMasterToken;
+
+// Sessions storage
+std::unordered_set<std::string> activeSessions;
 
 static constexpr char const* VAULT_CA_FILE = "/home/fg/Desktop/tableTopSecrets/ca.pem";
 
@@ -123,7 +128,25 @@ bool starts_with(const std::string& value, const std::string& start) {
   return std::equal(start.begin(), start.end(), value.begin());
 }
 
-uWS::SSLApp* globalApp;
+std::string generateSessionToken() {
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<> dis(0, 15);
+
+  std::stringstream ss;
+  ss << std::hex;
+  for (int i = 0; i < 32; ++i) {
+    ss << dis(gen);
+  }
+  return ss.str();
+}
+
+bool isAuthorized(uWS::HttpRequest* req) {
+  std::string authHeader = std::string(req->getHeader("authorization"));
+  if (!starts_with(authHeader, "Bearer ")) return false;
+  std::string token = authHeader.substr(7);
+  return activeSessions.find(token) != activeSessions.end();
+}
 
 int main() {
   uWS::SocketContextOptions sslOptions;
@@ -133,25 +156,24 @@ int main() {
 
   uWS::SSLApp app = uWS::SSLApp(sslOptions);
 
-  app.get("/*", [](auto* res, auto* req) {
+  app.get("/loginPage/*", [](auto* res, auto* req) {
     std::string path(req->getUrl());
-    if (path == "/") {
-      path = "/index.html";
+    if (path == "/loginPage") {
+      path = "/loginPage/public/index.html";
     }
 
     std::string filePath;
 
-    if (starts_with(path, "/dist/")) {
+    if (starts_with(path, "/dist/loginPage/")) {
       filePath = ".." + path;
     } else {
-      filePath = "../dist" + path;
+      filePath = "../src" + path;
     }
 
     std::ifstream file(filePath, std::ios::binary);
 
     if (!file) {
-      // fallback to public
-      filePath = "../public" + path;
+      filePath = "../src/loginPage/public" + path;
       file.open(filePath, std::ios::binary);
     }
 
@@ -163,7 +185,50 @@ int main() {
     std::stringstream buffer;
     buffer << file.rdbuf();
 
-    // Content type
+    if (ends_with(path, ".css")) {
+      res->writeHeader("Content-Type", "text/css");
+    } else if (ends_with(path, ".js") || ends_with(path, ".ts")) {
+      res->writeHeader("Content-Type", "application/javascript");
+    } else if (ends_with(path, ".html")) {
+      res->writeHeader("Content-Type", "text/html");
+    } else if (ends_with(path, ".json")) {
+      res->writeHeader("Content-Type", "application/json");
+    } else {
+      res->writeHeader("Content-Type", "text/plain");
+    }
+
+    res->end(buffer.str());
+  });
+
+  app.get("/dashboard/*", [](auto* res, auto* req) {
+    std::string path(req->getUrl());
+    if (path == "/dashboard") {
+      path = "/index.html";
+    }
+
+    std::string filePath;
+
+    if (starts_with(path, "/dashboard/dist/")) {
+      filePath = ".." + path;
+    } else {
+      filePath = "../dist/dashboard" + path;
+    }
+
+    std::ifstream file(filePath, std::ios::binary);
+
+    if (!file) {
+      filePath = "../src/dashboard/public" + path;
+      file.open(filePath, std::ios::binary);
+    }
+
+    if (!file) {
+      res->writeStatus("404 Not Found")->end("File not found");
+      return;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+
     if (ends_with(path, ".css")) {
       res->writeHeader("Content-Type", "text/css");
     } else if (ends_with(path, ".js") || ends_with(path, ".ts")) {
@@ -180,10 +245,7 @@ int main() {
   });
 
   app.post("/request", [](auto* res, auto* req) {
-    res->onAborted([]() { std::cout << "Client disconnected before completing request\n"; });
-
-    std::cout << "Request " << "\n";
-    // capture res explicitly and keep it alive
+    res->onAborted([]() {});
     res->onData([res](std::string_view data, bool last) mutable {
       static std::string buffer;
       buffer.append(data);
@@ -193,8 +255,6 @@ int main() {
 
           std::string id = json.value("id", "unknown");
           std::string request_id = "req-" + std::to_string(std::rand());
-
-          std::cout << "Request " << id << request_id << "\n";
           pendingRequests[request_id] = json;
 
           res->writeHeader("Content-Type", "application/json")
@@ -208,6 +268,10 @@ int main() {
   });
 
   app.post("/accept", [](auto* res, auto* req) {
+    if (!isAuthorized(req)) {
+      res->writeStatus("401 Unauthorized")->end("Missing or invalid session token");
+      return;
+    }
     res->onAborted([]() {});
     res->onData([res](std::string_view data, bool last) mutable {
       static std::string buffer;
@@ -229,17 +293,12 @@ int main() {
           std::vector<std::string> requestedPolicies =
               requestJson.value("policies", std::vector<std::string>{});
 
-          // Generate a real one-time Vault token:
           std::string oneTimeToken =
               generateOneTimeVaultToken(request_id, num_uses, requestedPolicies);
 
-          // Remove from pending
           pendingRequests.erase(it);
-
-          // Save to completedRequests for status polling
           completedRequests[request_id] = oneTimeToken;
 
-          // Respond back to the with the token
           nlohmann::json resp = {{"status", "approved"}, {"vault_key", oneTimeToken}};
           res->writeHeader("Content-Type", "application/json")->end(resp.dump());
         }
@@ -251,8 +310,11 @@ int main() {
   });
 
   app.post("/decline", [](auto* res, auto* req) {
-    res->onAborted([]() { std::cout << "Client disconnected during decline\n"; });
-
+    if (!isAuthorized(req)) {
+      res->writeStatus("401 Unauthorized")->end("Missing or invalid session token");
+      return;
+    }
+    res->onAborted([]() {});
     res->onData([res](std::string_view data, bool last) mutable {
       static std::string buffer;
       buffer.append(data);
@@ -264,9 +326,7 @@ int main() {
             res->writeStatus("404 Not Found")->end("Request ID not found");
             return;
           }
-
           pendingRequests.erase(request_id);
-
           res->end("{\"status\":\"declined\"}");
         } catch (...) {
           res->writeStatus("400 Bad Request")->end("Invalid JSON");
@@ -277,18 +337,23 @@ int main() {
   });
 
   app.get("/requests", [](auto* res, auto* req) {
+    if (!isAuthorized(req)) {
+      res->writeStatus("401 Unauthorized")->end("Missing or invalid session token");
+      return;
+    }
     nlohmann::json response;
-    std::cout << "Pending requests " << pendingRequests << "\n";
     for (const auto& [id, request] : pendingRequests) {
       response[id] = request;
     }
-
     res->writeHeader("Content-Type", "application/json")->end(response.dump());
   });
 
   app.get("/request-status", [](auto* res, auto* req) {
+    if (!isAuthorized(req)) {
+      res->writeStatus("401 Unauthorized")->end("Missing or invalid session token");
+      return;
+    }
     std::string request_id = std::string(req->getQuery("id"));
-    std::cout << "Status requested " << request_id << "\n";
     if (pendingRequests.count(request_id)) {
       res->writeHeader("Content-Type", "application/json")->end(R"({"status":"pending"})");
     } else if (completedRequests.count(request_id)) {
@@ -309,11 +374,15 @@ int main() {
       try {
         auto j = nlohmann::json::parse(buf);
         std::string token = j.value("token", "");
-        // Validate token by calling Vault API
-        bool valid = validateVaultToken(token);  // see below
+        bool valid = validateVaultToken(token);
         if (valid) {
           vaultMasterToken = token;
-          res->writeHeader("Content-Type", "application/json")->end(R"({"status":"ok"})");
+          std::string sessionToken = generateSessionToken();
+          activeSessions.insert(sessionToken);
+
+          std::cout << sessionToken;
+          nlohmann::json reply = {{"status", "ok"}, {"session_token", sessionToken}};
+          res->writeHeader("Content-Type", "application/json")->end(reply.dump());
         } else {
           res->writeStatus("401 Unauthorized")->end("Invalid Vault token");
         }

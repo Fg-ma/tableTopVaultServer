@@ -3,7 +3,11 @@ class ServerRequests {
 
   loadRequests = async () => {
     try {
-      const res = await fetch("/requests");
+      const res = await fetch("/requests", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("session_token")}`,
+        },
+      });
       if (!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
 
@@ -56,7 +60,10 @@ class ServerRequests {
     try {
       const res = await fetch("/accept", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("session_token")}`,
+        },
         body: JSON.stringify({ request_id: requestId }),
       });
       if (res.ok) this.loadRequests();
@@ -70,7 +77,10 @@ class ServerRequests {
     try {
       const res = await fetch("/decline", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("session_token")}`,
+        },
         body: JSON.stringify({ request_id: requestId }),
       });
       if (res.ok) this.loadRequests();
@@ -82,31 +92,6 @@ class ServerRequests {
 }
 
 const serverRequests = new ServerRequests();
-
-document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-
-  const vaultTokenInput = document.getElementById(
-    "vaultToken"
-  ) as HTMLInputElement;
-
-  if (!vaultTokenInput) return;
-
-  const token = vaultTokenInput.value;
-  const res = await fetch("/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token }),
-  });
-  if (res.ok) {
-    const loginOverlay = document.getElementById("loginOverlay");
-    if (loginOverlay) loginOverlay.style.display = "none";
-    serverRequests.loadRequests();
-  } else {
-    const loginError = document.getElementById("loginError");
-    if (loginError) loginError.textContent = "Invalid token";
-  }
-});
 
 window.addEventListener("load", serverRequests.loadRequests);
 setInterval(serverRequests.loadRequests, 5000);

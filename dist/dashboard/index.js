@@ -8,12 +8,15 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var _a;
 class ServerRequests {
     constructor() {
         this.loadRequests = () => __awaiter(this, void 0, void 0, function* () {
             try {
-                const res = yield fetch("/requests");
+                const res = yield fetch("/requests", {
+                    headers: {
+                        Authorization: `Bearer ${localStorage.getItem("session_token")}`,
+                    },
+                });
                 if (!res.ok)
                     throw new Error("Failed to fetch");
                 const data = yield res.json();
@@ -57,7 +60,10 @@ class ServerRequests {
             try {
                 const res = yield fetch("/accept", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${localStorage.getItem("session_token")}`,
+                    },
                     body: JSON.stringify({ request_id: requestId }),
                 });
                 if (res.ok)
@@ -73,7 +79,10 @@ class ServerRequests {
             try {
                 const res = yield fetch("/decline", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${localStorage.getItem("session_token")}`,
+                    },
                     body: JSON.stringify({ request_id: requestId }),
                 });
                 if (res.ok)
@@ -88,28 +97,5 @@ class ServerRequests {
     }
 }
 const serverRequests = new ServerRequests();
-(_a = document.getElementById("loginForm")) === null || _a === void 0 ? void 0 : _a.addEventListener("submit", (e) => __awaiter(void 0, void 0, void 0, function* () {
-    e.preventDefault();
-    const vaultTokenInput = document.getElementById("vaultToken");
-    if (!vaultTokenInput)
-        return;
-    const token = vaultTokenInput.value;
-    const res = yield fetch("/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-    });
-    if (res.ok) {
-        const loginOverlay = document.getElementById("loginOverlay");
-        if (loginOverlay)
-            loginOverlay.style.display = "none";
-        serverRequests.loadRequests();
-    }
-    else {
-        const loginError = document.getElementById("loginError");
-        if (loginError)
-            loginError.textContent = "Invalid token";
-    }
-}));
 window.addEventListener("load", serverRequests.loadRequests);
 setInterval(serverRequests.loadRequests, 5000);
