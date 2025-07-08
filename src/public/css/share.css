@@ -1,0 +1,16 @@
+@import url("https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;700&family=K2D:wght@400;700&display=swap");
+
+:root {
+  --fg-red-dark: #b20203;
+  --fg-red: #d40213;
+  --fg-red-light: #e62833;
+  --fg-white: #f2f2f2;
+  --fg-off-white: #d6d6d6;
+  --tone-black-1: #090909;
+  --tone-black-2: #161616;
+  --tone-black-3: #1a1a1a;
+  --tone-black-4: #212121;
+  --tone-black-5: #313131;
+  --tone-black-6: #3e3e3e;
+  --tone-black-7: #515151;
+}

@@ -8,7 +8,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var _a;
+var _a, _b;
 (_a = document.getElementById("loginForm")) === null || _a === void 0 ? void 0 : _a.addEventListener("submit", (e) => __awaiter(void 0, void 0, void 0, function* () {
     e.preventDefault();
     const vaultTokenInput = document.getElementById("vaultToken");
@@ -20,15 +20,12 @@ var _a;
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ cmd: "login", token }),
     });
     if (res.ok) {
         const data = yield res.json();
         localStorage.setItem("session_token", data.session_token);
-        const loginOverlay = document.getElementById("loginOverlay");
-        if (loginOverlay)
-            loginOverlay.style.display = "none";
-        serverRequests.loadRequests();
+        window.location.href = "/dashboard/";
     }
     else {
         const loginError = document.getElementById("loginError");
@@ -36,3 +33,17 @@ var _a;
             loginError.textContent = "Invalid token";
     }
 }));
+(_b = document
+    .getElementById("toggle-token-visibility")) === null || _b === void 0 ? void 0 : _b.addEventListener("click", () => {
+    const input = document.getElementById("vaultToken");
+    const btn = document.getElementById("toggle-token-visibility");
+    const img = btn === null || btn === void 0 ? void 0 : btn.querySelector("img");
+    if (!input || !btn || !img)
+        return;
+    const isHidden = input.type === "password";
+    input.type = isHidden ? "text" : "password";
+    img.src = isHidden
+        ? "/public/svgs/visibilityOffIcon.svg"
+        : "/public/svgs/visibilityIcon.svg";
+    img.alt = isHidden ? "Hide token" : "Show token";
+});

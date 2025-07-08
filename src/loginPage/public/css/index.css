@@ -1,51 +1,134 @@
-@import url("https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;700&family=K2D:wght@400;700&display=swap");
-
-:root {
-  /* Reds */
-  --fg-red-dark: #b20203;
-  --fg-red: #d40213;
-  --fg-red-light: #e62833;
-  /* Whites */
-  --fg-white: #f2f2f2;
-  --fg-off-white: #d6d6d6;
-  /* Blacks/Tones */
-  --tone-black-1: #090909;
-  --tone-black-2: #161616;
-  --tone-black-3: #1a1a1a;
-  --tone-black-4: #212121;
-  --tone-black-5: #313131;
-  --tone-black-6: #3e3e3e;
-  --tone-black-7: #515151;
+* {
+  box-sizing: border-box;
 }
 
-.login-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "K2D", sans-serif;
+  background-color: var(--tone-black-2);
+  color: var(--fg-white);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  text-align: center;
+}
+
+.logo {
+  width: 125px;
+  height: 125px;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  font-family: "Josefin Sans", sans-serif;
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
 }
-.login-card {
-  background: var(--tone-black-3);
-  padding: 2rem;
-  border-radius: 1rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
-  width: 320px;
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.title {
+  font-size: 2.2rem;
+  font-weight: 700;
+  font-family: "Josefin Sans", sans-serif;
+  color: var(--fg-red-light);
+  margin-bottom: 2rem;
+}
+
+form {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 1rem;
+  width: 90%;
+  max-width: 400px;
 }
-.login-field label,
+
+.login-field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  position: relative;
+}
+
+.login-field label {
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
 .login-field input {
-  font-family: "K2D", sans-serif;
+  width: 100%;
+  padding: 0.7rem 0.8rem 0.7rem 0.8rem;
+  color: var(--fg-white);
+  font-size: 1rem;
+  background: transparent;
+  border: none;
+  outline: none;
 }
+
+.toggle-visibility {
+  height: 90%;
+  aspect-ratio: 1 / 1;
+  background: none;
+  border: none;
+  color: var(--fg-off-white);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0;
+  margin-right: 0.5rem;
+}
+
+.toggle-visibility img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.btn {
+  background-color: var(--fg-red);
+  color: var(--fg-white);
+  border: none;
+  padding: 0.8rem 2rem;
+  font-size: 1rem;
+  font-weight: bold;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn:hover {
+  background-color: var(--fg-red-dark);
+}
+
 .error-msg {
-  color: var(--fg-red);
-  font-size: 0.85rem;
-  height: 1rem;
+  color: var(--fg-red-light);
+  font-size: 0.9rem;
+  min-height: 1rem;
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+.vault-input {
+  display: flex;
+  width: 100%;
+  height: max-content;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 0.4rem;
+  border: 1px solid var(--tone-black-6);
+  background: var(--tone-black-4);
+  overflow: hidden;
+}
+
+.vault-input:focus-within {
+  border: 2px solid var(--fg-off-white);
 }

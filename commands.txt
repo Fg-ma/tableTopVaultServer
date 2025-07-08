@@ -3,3 +3,9 @@ cmake ..
 make
 
 npx tsc --watch
+
+./VaultServer ../vault.conf
+
+sudo pkill -f nginx
+sudo lsof -i :2222 -i :2223
+~/Desktop/tableTopVaultServer/nginx-1.28.0/sbin/nginx -c ~/Desktop/tableTopVaultServer/nginx/nginx.conf

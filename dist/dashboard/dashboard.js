@@ -12,11 +12,15 @@ class ServerRequests {
     constructor() {
         this.loadRequests = () => __awaiter(this, void 0, void 0, function* () {
             try {
-                const res = yield fetch("/requests", {
+                const res = yield fetch("/list", {
                     headers: {
                         Authorization: `Bearer ${localStorage.getItem("session_token")}`,
                     },
                 });
+                if (res.status === 401) {
+                    window.location.href = "/loginPage/";
+                    return;
+                }
                 if (!res.ok)
                     throw new Error("Failed to fetch");
                 const data = yield res.json();
@@ -58,13 +62,13 @@ class ServerRequests {
         });
         this.sendAccept = (requestId) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const res = yield fetch("/accept", {
+                const res = yield fetch("/approve", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${localStorage.getItem("session_token")}`,
                     },
-                    body: JSON.stringify({ request_id: requestId }),
+                    body: JSON.stringify({ cmd: "approve", request_id: requestId }),
                 });
                 if (res.ok)
                     this.loadRequests();
@@ -83,7 +87,7 @@ class ServerRequests {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${localStorage.getItem("session_token")}`,
                     },
-                    body: JSON.stringify({ request_id: requestId }),
+                    body: JSON.stringify({ cmd: "decline", request_id: requestId }),
                 });
                 if (res.ok)
                     this.loadRequests();

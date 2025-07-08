@@ -4,27 +4,45 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>The Vault</title>
+    <link rel="stylesheet" href="/public/css/share.css" />
     <link rel="stylesheet" href="/loginPage/public/css/index.css" />
+
+    <link
+      rel="icon"
+      href="/public/svgs/tableTopVaultIcon.svg"
+      type="image/svg+xml"
+    />
   </head>
   <body>
-    <!-- Login Overlay -->
-    <div id="loginOverlay" class="login-overlay">
-      <form id="loginForm" class="login-card">
-        <h2>Vault Login</h2>
-        <div class="login-field">
-          <label for="vaultToken">Vault API Token</label>
+    <div class="logo">
+      <img src="/public/svgs/tableTopVaultIcon.svg" alt="The vault logo" />
+    </div>
+    <div class="title">The Vault</div>
+
+    <form id="loginForm">
+      <div class="login-field">
+        <label for="vaultToken">Vault API Token</label>
+        <div class="vault-input">
           <input
             id="vaultToken"
             type="password"
             placeholder="s.xxxxxxx"
             required
           />
+          <button
+            type="button"
+            id="toggle-token-visibility"
+            class="toggle-visibility"
+            aria-label="Toggle token visibility"
+          >
+            <img src="/public/svgs/visibilityIcon.svg" alt="Show token" />
+          </button>
         </div>
-        <button type="submit" class="btn primary-btn">Login</button>
-        <p id="loginError" class="error-msg"></p>
-      </form>
-    </div>
+      </div>
+      <button type="submit" class="btn">Login</button>
+      <p id="loginError" class="error-msg"></p>
+    </form>
 
-    <script src="/dist/loginPage/login.js" type="module"></script>
+    <script src="/loginPage/dist/loginPage/login.js" type="module"></script>
   </body>
 </html>

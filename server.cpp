@@ -1,407 +1,161 @@
-#include <curl/curl.h>
-#include <openssl/dh.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
+#include <yaml-cpp/yaml.h>
 
-#include <filesystem>
-#include <fstream>
+#include <boost/asio.hpp>
+#include <boost/asio/ssl.hpp>
+#include <boost/beast.hpp>
+#include <boost/beast/ssl.hpp>
+#include <boost/beast/websocket.hpp>
+#include <boost/beast/websocket/ssl.hpp>
 #include <iostream>
-#include <random>
-#include <sstream>
-#include <unordered_set>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <thread>
+#include <vector>
 
-#include "lib/json.hpp"
-#include "lib/uWebSockets/src/App.h"
+namespace asio = boost::asio;
+namespace ssl = asio::ssl;
+namespace beast = boost::beast;
+namespace http = beast::http;
+namespace websocket = beast::websocket;
+using tcp = asio::ip::tcp;
+using json = nlohmann::json;
 
-namespace fs = std::filesystem;
+struct Config {
+  std::string server_host;
+  std::string server_port;
+  std::string ca_file;
+  std::string request_id, request_ip, request_purpose;
+  std::vector<std::string> request_policies;
+  int request_num_uses;
+};
 
-std::string key_file = "/home/fg/Desktop/tableTopVaultServer/certs/table-top-vault-server-key.pem";
-std::string cert_file = "/home/fg/Desktop/tableTopVaultServer/certs/table-top-vault-server.pem";
-std::string dh_file =
-    "/home/fg/Desktop/tableTopVaultServer/certs/table-top-vault-server-dhparam.pem";
+Config config;
 
-std::unordered_map<std::string, nlohmann::json> pendingRequests;
-std::unordered_map<std::string, std::string> completedRequests;
-std::string vaultMasterToken;
-
-// Sessions storage
-std::unordered_set<std::string> activeSessions;
-
-static constexpr char const* VAULT_CA_FILE = "/home/fg/Desktop/tableTopSecrets/ca.pem";
-
-static size_t CurlWrite_CallbackFunc_StdString(void* contents, size_t size, size_t nmemb,
-                                               void* userp) {
-  ((std::string*)userp)->append((char*)contents, size * nmemb);
-  return size * nmemb;
-}
-
-std::string generateOneTimeVaultToken(const std::string& request_id, int num_uses,
-                                      const std::vector<std::string>& policies) {
-  nlohmann::json payload = {{"policies", policies},
-                            {"meta", {{"request_id", request_id}}},
-                            {"ttl", "30m"},
-                            {"num_uses", num_uses},
-                            {"renewable", false}};
-  std::string payloadStr = payload.dump();
-
-  CURL* curl = curl_easy_init();
-  std::string response;
-  if (curl) {
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, ("X-Vault-Token: " + vaultMasterToken).c_str());
-
-    curl_easy_setopt(curl, CURLOPT_URL, "https://192.168.1.48:8200/v1/auth/token/create");
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payloadStr.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWrite_CallbackFunc_StdString);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-    curl_easy_setopt(curl, CURLOPT_CAINFO, VAULT_CA_FILE);
-
-    CURLcode res = curl_easy_perform(curl);
-    if (res != CURLE_OK) {
-      std::cerr << "curl error: " << curl_easy_strerror(res) << "\n";
-    }
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-  }
-
-  auto j = nlohmann::json::parse(response);
-
-  if (!j.contains("auth") || !j["auth"].contains("client_token")) {
-    std::cerr << "Error creating one-time token: " << response << "\n";
-    return "";
-  }
-
-  return j["auth"]["client_token"].get<std::string>();
-}
-
-bool validateVaultToken(const std::string& token) {
-  CURL* curl = curl_easy_init();
-  if (!curl) {
-    std::cerr << "curl init failed\n";
-    return false;
-  }
-
-  std::string response;
-  struct curl_slist* headers = nullptr;
-  headers = curl_slist_append(headers, "Content-Type: application/json");
-  headers = curl_slist_append(headers, ("X-Vault-Token: " + token).c_str());
-
-  curl_easy_setopt(curl, CURLOPT_URL, "https://192.168.1.48:8200/v1/auth/token/lookup-self");
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWrite_CallbackFunc_StdString);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-
-  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-  curl_easy_setopt(curl, CURLOPT_CAINFO, VAULT_CA_FILE);
-
-  CURLcode res = curl_easy_perform(curl);
-  long http_code = 0;
-  if (res == CURLE_OK) {
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-  } else {
-    std::cerr << "curl error: " << curl_easy_strerror(res) << "\n";
-  }
-
-  curl_slist_free_all(headers);
-  curl_easy_cleanup(curl);
-
-  if (res != CURLE_OK || http_code != 200) {
-    std::cerr << "lookup-self fail (HTTP " << http_code << "): " << response << "\n";
-    return false;
-  }
+bool load_config(const std::string& path) {
+  YAML::Node root = YAML::LoadFile(path);
+  auto srv = root["server"];
+  auto tls = root["tls"];
+  auto req = root["request"];
+  config.server_host = srv["ip"].as<std::string>();
+  config.server_port = srv["port"].as<std::string>();
+  config.ca_file = tls["ca"].as<std::string>();
+  config.request_id = req["id"].as<std::string>();
+  config.request_ip = req["ip"].as<std::string>();
+  config.request_purpose = req["purpose"].as<std::string>();
+  config.request_policies = req["policies"].as<std::vector<std::string>>();
+  config.request_num_uses = req["num_uses"].as<int>();
   return true;
 }
 
-bool ends_with(const std::string& value, const std::string& ending) {
-  if (ending.size() > value.size()) return false;
-  return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+json https_post(asio::io_context& ioc, ssl::context& ctx, const std::string& host,
+                const std::string& port, const std::string& target, const json& body) {
+  tcp::resolver resolver(ioc);
+  auto const results = resolver.resolve(host, port);
+  beast::ssl_stream<beast::tcp_stream> stream(ioc, ctx);
+
+  if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str()))
+    throw beast::system_error(
+        beast::error_code(static_cast<int>(::ERR_get_error()), asio::error::get_ssl_category()));
+
+  beast::get_lowest_layer(stream).connect(results);
+  stream.handshake(ssl::stream_base::client);
+
+  http::request<http::string_body> req{http::verb::post, target, 11};
+  req.set(http::field::host, host);
+  req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+  req.set(http::field::content_type, "application/json");
+  req.body() = body.dump();
+  req.prepare_payload();
+
+  http::write(stream, req);
+
+  beast::flat_buffer buffer;
+  http::response<http::string_body> res;
+  http::read(stream, buffer, res);
+
+  beast::error_code ec;
+  stream.shutdown(ec);
+  if (ec == asio::error::eof) ec = {};
+  if (ec) throw beast::system_error{ec};
+
+  return json::parse(res.body());
 }
 
-bool starts_with(const std::string& value, const std::string& start) {
-  if (start.size() > value.size()) return false;
-  return std::equal(start.begin(), start.end(), value.begin());
-}
+// Connects to WSS server and waits for a vault_token for the given request_id
+void wait_for_approval(asio::io_context& ioc, ssl::context& ctx, const std::string& host,
+                       const std::string& port, const std::string& request_id) {
+  tcp::resolver resolver(ioc);
+  auto results = resolver.resolve(host, port);
 
-std::string generateSessionToken() {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> dis(0, 15);
+  websocket::stream<beast::ssl_stream<tcp::socket>> ws(ioc, ctx);
 
-  std::stringstream ss;
-  ss << std::hex;
-  for (int i = 0; i < 32; ++i) {
-    ss << dis(gen);
+  // Connect and SSL handshake
+  auto ep = asio::connect(ws.next_layer().next_layer(), results);
+  ws.next_layer().handshake(ssl::stream_base::client);
+
+  // Perform WebSocket handshake
+  ws.handshake(host + ":" + port, "/ws");
+
+  // Subscribe to updates for this request_id
+  json subscribe_msg = {{"cmd", "subscribe"}, {"request_id", request_id}};
+  ws.write(asio::buffer(subscribe_msg.dump()));
+
+  // Wait for approval message
+  beast::flat_buffer buffer;
+  while (true) {
+    buffer.consume(buffer.size());
+    ws.read(buffer);
+    std::string msg = beast::buffers_to_string(buffer.data());
+
+    try {
+      auto j = json::parse(msg);
+      if (j.contains("request_id") && j["request_id"] == request_id && j.contains("vault_token")) {
+        std::cout << j["vault_token"].get<std::string>() << std::endl;
+        break;
+      }
+    } catch (...) {
+      std::cerr << "[WARN] Invalid JSON message: " << msg << "\n";
+    }
   }
-  return ss.str();
+
+  beast::error_code ec;
+  ws.close(websocket::close_code::normal, ec);
 }
 
-bool isAuthorized(uWS::HttpRequest* req) {
-  std::string authHeader = std::string(req->getHeader("authorization"));
-  if (!starts_with(authHeader, "Bearer ")) return false;
-  std::string token = authHeader.substr(7);
-  return activeSessions.find(token) != activeSessions.end();
-}
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <config.yaml>\n";
+    return 1;
+  }
 
-int main() {
-  uWS::SocketContextOptions sslOptions;
-  sslOptions.key_file_name = key_file.c_str();
-  sslOptions.cert_file_name = cert_file.c_str();
-  sslOptions.dh_params_file_name = dh_file.c_str();
+  if (!load_config(argv[1])) return 1;
 
-  uWS::SSLApp app = uWS::SSLApp(sslOptions);
+  asio::io_context ioc;
+  ssl::context ssl_ctx(ssl::context::tlsv12_client);
+  ssl_ctx.set_verify_mode(ssl::verify_peer);
+  ssl_ctx.load_verify_file(config.ca_file);
 
-  app.get("/loginPage/*", [](auto* res, auto* req) {
-    std::string path(req->getUrl());
-    if (path == "/loginPage") {
-      path = "/loginPage/public/index.html";
-    }
+  // Step 1: POST /request
+  json req_payload = {{"cmd", "request"},
+                      {"id", config.request_id},
+                      {"ip", config.request_ip},
+                      {"purpose", config.request_purpose},
+                      {"policies", config.request_policies},
+                      {"num_uses", config.request_num_uses}};
 
-    std::string filePath;
+  auto resp =
+      https_post(ioc, ssl_ctx, config.server_host, config.server_port, "/request", req_payload);
 
-    if (starts_with(path, "/dist/loginPage/")) {
-      filePath = ".." + path;
-    } else {
-      filePath = "../src" + path;
-    }
+  if (!resp.contains("request_id")) {
+    std::cerr << "Bad /request response: " << resp.dump() << "\n";
+    return 1;
+  }
 
-    std::ifstream file(filePath, std::ios::binary);
+  std::string rid = resp["request_id"];
+  std::cerr << "[INFO] Sent request. Awaiting approval for request_id: " << rid << "\n";
 
-    if (!file) {
-      filePath = "../src/loginPage/public" + path;
-      file.open(filePath, std::ios::binary);
-    }
-
-    if (!file) {
-      res->writeStatus("404 Not Found")->end("File not found");
-      return;
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-
-    if (ends_with(path, ".css")) {
-      res->writeHeader("Content-Type", "text/css");
-    } else if (ends_with(path, ".js") || ends_with(path, ".ts")) {
-      res->writeHeader("Content-Type", "application/javascript");
-    } else if (ends_with(path, ".html")) {
-      res->writeHeader("Content-Type", "text/html");
-    } else if (ends_with(path, ".json")) {
-      res->writeHeader("Content-Type", "application/json");
-    } else {
-      res->writeHeader("Content-Type", "text/plain");
-    }
-
-    res->end(buffer.str());
-  });
-
-  app.get("/dashboard/*", [](auto* res, auto* req) {
-    std::string path(req->getUrl());
-    if (path == "/dashboard") {
-      path = "/index.html";
-    }
-
-    std::string filePath;
-
-    if (starts_with(path, "/dashboard/dist/")) {
-      filePath = ".." + path;
-    } else {
-      filePath = "../dist/dashboard" + path;
-    }
-
-    std::ifstream file(filePath, std::ios::binary);
-
-    if (!file) {
-      filePath = "../src/dashboard/public" + path;
-      file.open(filePath, std::ios::binary);
-    }
-
-    if (!file) {
-      res->writeStatus("404 Not Found")->end("File not found");
-      return;
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-
-    if (ends_with(path, ".css")) {
-      res->writeHeader("Content-Type", "text/css");
-    } else if (ends_with(path, ".js") || ends_with(path, ".ts")) {
-      res->writeHeader("Content-Type", "application/javascript");
-    } else if (ends_with(path, ".html")) {
-      res->writeHeader("Content-Type", "text/html");
-    } else if (ends_with(path, ".json")) {
-      res->writeHeader("Content-Type", "application/json");
-    } else {
-      res->writeHeader("Content-Type", "text/plain");
-    }
-
-    res->end(buffer.str());
-  });
-
-  app.post("/request", [](auto* res, auto* req) {
-    res->onAborted([]() {});
-    res->onData([res](std::string_view data, bool last) mutable {
-      static std::string buffer;
-      buffer.append(data);
-      if (last) {
-        try {
-          auto json = nlohmann::json::parse(buffer);
-
-          std::string id = json.value("id", "unknown");
-          std::string request_id = "req-" + std::to_string(std::rand());
-          pendingRequests[request_id] = json;
-
-          res->writeHeader("Content-Type", "application/json")
-              ->end("{\"status\":\"pending\", \"request_id\":\"" + request_id + "\"}");
-        } catch (...) {
-          res->writeStatus("400 Bad Request")->end("Invalid JSON");
-        }
-        buffer.clear();
-      }
-    });
-  });
-
-  app.post("/accept", [](auto* res, auto* req) {
-    if (!isAuthorized(req)) {
-      res->writeStatus("401 Unauthorized")->end("Missing or invalid session token");
-      return;
-    }
-    res->onAborted([]() {});
-    res->onData([res](std::string_view data, bool last) mutable {
-      static std::string buffer;
-      buffer.append(data);
-
-      if (!last) return;
-
-      try {
-        auto reqJson = nlohmann::json::parse(buffer);
-        std::string request_id = reqJson.value("request_id", "");
-
-        auto it = pendingRequests.find(request_id);
-        if (it == pendingRequests.end()) {
-          res->writeStatus("404 Not Found")->end("Request ID not found");
-        } else {
-          auto requestJson = it->second;
-
-          int num_uses = requestJson.value("num_uses", 1);
-          std::vector<std::string> requestedPolicies =
-              requestJson.value("policies", std::vector<std::string>{});
-
-          std::string oneTimeToken =
-              generateOneTimeVaultToken(request_id, num_uses, requestedPolicies);
-
-          pendingRequests.erase(it);
-          completedRequests[request_id] = oneTimeToken;
-
-          nlohmann::json resp = {{"status", "approved"}, {"vault_key", oneTimeToken}};
-          res->writeHeader("Content-Type", "application/json")->end(resp.dump());
-        }
-      } catch (...) {
-        res->writeStatus("400 Bad Request")->end("Invalid JSON");
-      }
-      buffer.clear();
-    });
-  });
-
-  app.post("/decline", [](auto* res, auto* req) {
-    if (!isAuthorized(req)) {
-      res->writeStatus("401 Unauthorized")->end("Missing or invalid session token");
-      return;
-    }
-    res->onAborted([]() {});
-    res->onData([res](std::string_view data, bool last) mutable {
-      static std::string buffer;
-      buffer.append(data);
-      if (last) {
-        try {
-          auto json = nlohmann::json::parse(buffer);
-          std::string request_id = json.value("request_id", "");
-          if (pendingRequests.find(request_id) == pendingRequests.end()) {
-            res->writeStatus("404 Not Found")->end("Request ID not found");
-            return;
-          }
-          pendingRequests.erase(request_id);
-          res->end("{\"status\":\"declined\"}");
-        } catch (...) {
-          res->writeStatus("400 Bad Request")->end("Invalid JSON");
-        }
-        buffer.clear();
-      }
-    });
-  });
-
-  app.get("/requests", [](auto* res, auto* req) {
-    if (!isAuthorized(req)) {
-      res->writeStatus("401 Unauthorized")->end("Missing or invalid session token");
-      return;
-    }
-    nlohmann::json response;
-    for (const auto& [id, request] : pendingRequests) {
-      response[id] = request;
-    }
-    res->writeHeader("Content-Type", "application/json")->end(response.dump());
-  });
-
-  app.get("/request-status", [](auto* res, auto* req) {
-    if (!isAuthorized(req)) {
-      res->writeStatus("401 Unauthorized")->end("Missing or invalid session token");
-      return;
-    }
-    std::string request_id = std::string(req->getQuery("id"));
-    if (pendingRequests.count(request_id)) {
-      res->writeHeader("Content-Type", "application/json")->end(R"({"status":"pending"})");
-    } else if (completedRequests.count(request_id)) {
-      auto vault_token = completedRequests[request_id];
-      res->writeHeader("Content-Type", "application/json")
-          ->end("{\"status\":\"approved\", \"vault_token\":\"" + vault_token + "\"}");
-    } else {
-      res->writeStatus("404 Not Found")->end("Unknown request id");
-    }
-  });
-
-  app.post("/login", [](auto* res, auto* req) {
-    res->onAborted([]() {});
-    res->onData([res](std::string_view data, bool last) mutable {
-      static std::string buf;
-      buf.append(data);
-      if (!last) return;
-      try {
-        auto j = nlohmann::json::parse(buf);
-        std::string token = j.value("token", "");
-        bool valid = validateVaultToken(token);
-        if (valid) {
-          vaultMasterToken = token;
-          std::string sessionToken = generateSessionToken();
-          activeSessions.insert(sessionToken);
-
-          std::cout << sessionToken;
-          nlohmann::json reply = {{"status", "ok"}, {"session_token", sessionToken}};
-          res->writeHeader("Content-Type", "application/json")->end(reply.dump());
-        } else {
-          res->writeStatus("401 Unauthorized")->end("Invalid Vault token");
-        }
-      } catch (...) {
-        res->writeStatus("400 Bad Request")->end("Bad JSON");
-      }
-      buf.clear();
-    });
-  });
-
-  app.listen("0.0.0.0", 4242,
-             [](auto* listenSocket) {
-               if (listenSocket) {
-                 std::cout << "Listening with TLS on port 4242...\n";
-               } else {
-                 std::cout << "TLS listen failed.\n";
-               }
-             })
-      .run();
+  // Step 2: Listen for approval via WebSocket
+  wait_for_approval(ioc, ssl_ctx, config.server_host, config.server_port, rid);
 
   return 0;
 }

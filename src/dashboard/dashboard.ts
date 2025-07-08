@@ -3,12 +3,19 @@ class ServerRequests {
 
   loadRequests = async () => {
     try {
-      const res = await fetch("/requests", {
+      const res = await fetch("/list", {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("session_token")}`,
         },
       });
+
+      if (res.status === 401) {
+        window.location.href = "/loginPage/";
+        return;
+      }
+
       if (!res.ok) throw new Error("Failed to fetch");
+
       const data = await res.json();
 
       const list = document.getElementById("requestsList");
@@ -58,13 +65,13 @@ class ServerRequests {
 
   sendAccept = async (requestId: string) => {
     try {
-      const res = await fetch("/accept", {
+      const res = await fetch("/approve", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("session_token")}`,
         },
-        body: JSON.stringify({ request_id: requestId }),
+        body: JSON.stringify({ cmd: "approve", request_id: requestId }),
       });
       if (res.ok) this.loadRequests();
       else console.error("Approve failed");
@@ -81,7 +88,7 @@ class ServerRequests {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("session_token")}`,
         },
-        body: JSON.stringify({ request_id: requestId }),
+        body: JSON.stringify({ cmd: "decline", request_id: requestId }),
       });
       if (res.ok) this.loadRequests();
       else console.error("Decline failed");
