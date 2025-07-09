@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "lib/secure_string.h"
 #include "lib/uWebSockets/src/App.h"
 
 namespace fs = std::filesystem;
@@ -28,7 +29,7 @@ struct WSData {
   std::string request_id;
 };
 
-static std::string vaultMasterToken;
+static std::optional<SecureString> vaultMasterToken;
 static std::unordered_map<std::string, json> pendingRequests;
 static std::unordered_map<std::string, std::string> completedRequests;
 static std::unordered_set<std::string> activeSessions;
@@ -37,6 +38,8 @@ static std::unordered_map<std::string, uWS::WebSocket<true, true, WSData*>*> wsC
 struct Config {
   std::string server_ip;
   int server_port;
+  std::string nginx_server_ip;
+  int nginx_server_port;
   std::string vault_ca;
   std::string vault_cert;
   std::string vault_key;
@@ -105,6 +108,9 @@ bool load_config(const std::string& path) {
     auto srv = cfg["server"];
     config.server_ip = srv["ip"].as<std::string>();
     config.server_port = srv["port"].as<int>();
+    auto nginx = cfg["server"];
+    config.nginx_server_ip = nginx["ip"].as<std::string>();
+    config.nginx_server_port = nginx["port"].as<int>();
     auto tls = cfg["tls"];
     config.vault_ca = tls["ca"].as<std::string>();
     config.vault_cert = tls["cert"].as<std::string>();
@@ -130,7 +136,7 @@ std::string generateOneTimeVaultToken(const std::string& request_id, int num_use
                                       const std::vector<std::string>& policies) {
   nlohmann::json payload = {{"policies", policies},
                             {"meta", {{"request_id", request_id}}},
-                            {"ttl", "30m"},
+                            {"ttl", "1m"},
                             {"num_uses", num_uses},
                             {"renewable", false}};
   std::string payloadStr = payload.dump();
@@ -140,7 +146,8 @@ std::string generateOneTimeVaultToken(const std::string& request_id, int num_use
   if (curl) {
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, ("X-Vault-Token: " + vaultMasterToken).c_str());
+    headers = curl_slist_append(
+        headers, ("X-Vault-Token: " + std::string(vaultMasterToken->c_str())).c_str());
 
     curl_easy_setopt(curl, CURLOPT_URL, config.vault_token_url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -206,7 +213,7 @@ bool validateVaultToken(const std::string& token) {
     std::cerr << "lookup-self fail (HTTP " << http_code << "): " << response << "\n";
     return false;
   }
-  vaultMasterToken = token;
+  vaultMasterToken = SecureString(token);
   return true;
 }
 
@@ -240,6 +247,13 @@ auto isAuthorized = [](uWS::HttpRequest* req) {
 auto checkInternal = [](uWS::HttpRequest* req) {
   auto token = req->getHeader("x-internal-token");
   return token == "s3cr3t-from-nginx";
+};
+
+auto checkOrigin = [](uWS::HttpRequest* req) {
+  std::string_view origin = req->getHeader("origin");
+  std::string expected_origin =
+      "https://" + config.server_ip + ":" + std::to_string(config.server_port);
+  return origin == expected_origin;
 };
 
 int main(int argc, char** argv) {
@@ -297,6 +311,11 @@ int main(int argc, char** argv) {
 
   app.get("/public/*", [](auto* res, auto* req) {
     if (!checkInternal(req)) {
+      res->writeStatus("403 Forbidden")->end();
+      return;
+    }
+
+    if (!checkInternal(req)) {
       res->writeStatus("401 Unauthorized")->end();
       return;
     }
@@ -335,6 +354,11 @@ int main(int argc, char** argv) {
   });
 
   app.get("/loginPage/*", [](auto* res, auto* req) {
+    if (!checkInternal(req)) {
+      res->writeStatus("403 Forbidden")->end();
+      return;
+    }
+
     if (!checkInternal(req)) {
       res->writeStatus("401 Unauthorized")->end();
       return;
@@ -383,6 +407,11 @@ int main(int argc, char** argv) {
 
   app.get("/dashboard/*", [](auto* res, auto* req) {
     if (!checkInternal(req)) {
+      res->writeStatus("403 Forbidden")->end();
+      return;
+    }
+
+    if (!checkInternal(req)) {
       res->writeStatus("401 Unauthorized")->end();
       return;
     }
@@ -429,6 +458,11 @@ int main(int argc, char** argv) {
 
   app.post("/login", [](auto* res, auto* req) {
     if (!checkInternal(req)) {
+      res->writeStatus("403 Forbidden")->end();
+      return;
+    }
+
+    if (!checkInternal(req)) {
       res->writeStatus("401 Unauthorized")->end();
       return;
     }
@@ -463,112 +497,158 @@ int main(int argc, char** argv) {
 
   app.post("/request", [&](auto* res, auto* req) {
     if (!checkInternal(req)) {
+      res->writeStatus("403 Forbidden")->end();
+      return;
+    }
+
+    if (!checkInternal(req)) {
       res->writeStatus("401 Unauthorized")->end();
       return;
     }
 
-    res->onAborted([res]() { std::cerr << "[/request] Aborted by client before complete body\n"; });
+    // Handle premature disconnects
+    res->onAborted([]() { std::cerr << "[/request] Aborted by client before complete body\n"; });
 
-    res->onData([res, buf = std::make_shared<std::string>()](std::string_view data, bool last) {
-      buf->append(data);
-      if (!last) return;
+    // Buffer to collect POST data
+    res->onData(
+        [res, buf = std::make_shared<std::string>()](std::string_view data, bool last) mutable {
+          buf->append(data);
+          if (!last) return;
 
-      try {
-        auto j = json::parse(*buf);
-        std::cerr << "[/request] Parsed JSON: " << j << "\n";
+          try {
+            auto j = json::parse(*buf);
 
-        schema_map["request"].validate(j);
-        std::string rid = "req-" + std::to_string(std::rand());
-        pendingRequests[rid] = j;
+            // Schema validation
+            schema_map["request"].validate(j);
 
-        json response = {{"request_id", rid}};
-        std::cerr << "[/request] Sending response: " << response.dump() << "\n";
+            // Generate a request ID and store the request
+            std::string rid = "req-" + std::to_string(std::rand());
+            pendingRequests[rid] = j;
 
-        res->writeHeader("Content-Type", "application/json")->end(response.dump());
-      } catch (const std::exception& e) {
-        std::cerr << "[/request] JSON parse/validate error: " << e.what() << "\n";
-        res->writeStatus("400 Bad Request")->end("Invalid request payload");
-      }
-    });
+            // Prepare response JSON
+            json response = {{"request_id", rid}};
+            std::string responseStr = response.dump();
+
+            // Ensure full response is flushed together using cork()
+            res->cork([res, responseStr = std::move(responseStr)]() {
+              res->writeHeader("Content-Type", "application/json");
+              res->end(responseStr);
+            });
+
+          } catch (const std::exception& e) {
+            std::cerr << "[/request] JSON parse/validate error: " << e.what() << "\n";
+            res->writeStatus("400 Bad Request")->end("Invalid request payload");
+          }
+        });
   });
 
   app.post("/approve", [&](auto* res, auto* req) {
     if (!checkInternal(req)) {
+      res->writeStatus("403 Forbidden")->end();
+      return;
+    }
+
+    if (!checkInternal(req)) {
       res->writeStatus("401 Unauthorized")->end();
       return;
     }
+
     if (!isAuthorized(req)) {
       res->writeStatus("401 Unauthorized")->end();
       return;
     }
 
-    res->onData([&](std::string_view data, bool last) {
-      static std::string buf;
-      buf.append(data);
-      if (!last) return;
-      try {
-        auto j = json::parse(buf);
-        schema_map["approve"].validate(j);
-        std::string rid = j["request_id"].get<std::string>();
-        auto it = pendingRequests.find(rid);
-        if (it == pendingRequests.end()) {
-          res->writeStatus("404 Not Found")->end();
-        } else {
-          auto& reqData = it->second;
-          auto token =
-              generateOneTimeVaultToken(rid, reqData["num_uses"].get<int>(),
-                                        reqData["policies"].get<std::vector<std::string>>());
-          if (auto it = wsClients.find(rid); it != wsClients.end()) {
-            json msg = {{"cmd", "approved"}, {"vault_token", token}};
-            it->second->send(msg.dump(), uWS::OpCode::TEXT);
+    res->onAborted([]() { std::cerr << "[/approve] Request aborted by client.\n"; });
+
+    res->onData(
+        [res, buf = std::make_shared<std::string>()](std::string_view data, bool last) mutable {
+          buf->append(data);
+          if (!last) return;
+
+          try {
+            auto j = json::parse(*buf);
+            schema_map["approve"].validate(j);
+            std::string rid = j["request_id"].get<std::string>();
+            auto it = pendingRequests.find(rid);
+            if (it == pendingRequests.end()) {
+              res->writeStatus("404 Not Found")->end();
+            } else {
+              auto& reqData = it->second;
+              auto token =
+                  generateOneTimeVaultToken(rid, reqData["num_uses"].get<int>(),
+                                            reqData["policies"].get<std::vector<std::string>>());
+              pendingRequests.erase(it);
+              if (auto it = wsClients.find(rid); it != wsClients.end()) {
+                json msg = {{"cmd", "approved"}, {"vault_token", token}};
+                it->second->send(msg.dump(), uWS::OpCode::TEXT);
+              }
+            }
+          } catch (...) {
+            res->writeStatus("400 Bad Request")->end();
           }
-          pendingRequests.erase(it);
-        }
-      } catch (...) {
-        res->writeStatus("400 Bad Request")->end();
-      }
-      buf.clear();
-    });
+        });
   });
 
   app.post("/decline", [&](auto* res, auto* req) {
     if (!checkInternal(req)) {
-      res->writeStatus("401 Unauthorized")->end();
+      res->writeStatus("403 Forbidden")->end();
       return;
     }
-    if (!isAuthorized(req)) {
-      res->writeStatus("401 Unauthorized")->end();
-      return;
-    }
-    res->onData([&](std::string_view data, bool last) {
-      static std::string buf;
-      buf.append(data);
-      if (!last) return;
-      try {
-        auto j = json::parse(buf);
-        schema_map["decline"].validate(j);
-        std::string rid = j["request_id"].get<std::string>();
-        if (pendingRequests.erase(rid)) {
-          res->writeHeader("Content-Type", "application/json")->end("{\"status\":\"declined\"}");
-        } else {
-          res->writeStatus("404 Not Found")->end();
-        }
-      } catch (...) {
-        res->writeStatus("400 Bad Request")->end();
-      }
-      buf.clear();
-    });
-  });
 
-  app.get("/list", [&](auto* res, auto* req) {
     if (!checkInternal(req)) {
       res->writeStatus("401 Unauthorized")->end();
       return;
     }
+
     if (!isAuthorized(req)) {
       res->writeStatus("401 Unauthorized")->end();
       return;
     }
+
+    res->onAborted([]() { std::cerr << "[/decline] Request aborted by client.\n"; });
+
+    res->onData(
+        [res, buf = std::make_shared<std::string>()](std::string_view data, bool last) mutable {
+          buf->append(data);
+
+          if (!last) return;
+
+          try {
+            auto j = json::parse(*buf);
+            schema_map["decline"].validate(j);
+            std::string rid = j["request_id"].get<std::string>();
+            auto it = pendingRequests.find(rid);
+            if (it == pendingRequests.end()) {
+              res->writeStatus("404 Not Found")->end();
+            } else {
+              pendingRequests.erase(it);
+              if (auto it = wsClients.find(rid); it != wsClients.end()) {
+                json msg = {{"cmd", "declined"}};
+                it->second->send(msg.dump(), uWS::OpCode::TEXT);
+              }
+            }
+          } catch (...) {
+            res->writeStatus("400 Bad Request")->end();
+          }
+        });
+  });
+
+  app.get("/list", [&](auto* res, auto* req) {
+    if (!checkInternal(req)) {
+      res->writeStatus("403 Forbidden")->end();
+      return;
+    }
+
+    if (!checkInternal(req)) {
+      res->writeStatus("401 Unauthorized")->end();
+      return;
+    }
+
+    if (!isAuthorized(req)) {
+      res->writeStatus("401 Unauthorized")->end();
+      return;
+    }
+
     json arr = json::array();
     for (const auto& [rid, reqData] : pendingRequests) {
       json entry = reqData;

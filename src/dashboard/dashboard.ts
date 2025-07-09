@@ -23,9 +23,8 @@ class ServerRequests {
       if (!list) return;
 
       list.innerHTML = "";
-
-      for (const requestId in data) {
-        const req = data[requestId];
+      for (const req of data) {
+        const requestId = req.request_id;
         const li = document.createElement("li");
         li.className = "request-card";
 
@@ -73,8 +72,9 @@ class ServerRequests {
         },
         body: JSON.stringify({ cmd: "approve", request_id: requestId }),
       });
-      if (res.ok) this.loadRequests();
-      else console.error("Approve failed");
+      if (res.ok) {
+        setTimeout(() => this.loadRequests(), 500);
+      } else console.error("Approve failed");
     } catch (e) {
       console.error(e);
     }
@@ -90,8 +90,9 @@ class ServerRequests {
         },
         body: JSON.stringify({ cmd: "decline", request_id: requestId }),
       });
-      if (res.ok) this.loadRequests();
-      else console.error("Decline failed");
+      if (res.ok) {
+        setTimeout(() => this.loadRequests(), 500);
+      } else console.error("Decline failed");
     } catch (e) {
       console.error(e);
     }

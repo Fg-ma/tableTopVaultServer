@@ -28,6 +28,8 @@ struct Config {
   std::string server_host;
   std::string server_port;
   std::string ca_file;
+  std::string cert_file;
+  std::string key_file;
   std::string request_id;
   std::string request_ip;
   std::string request_purpose;
@@ -44,6 +46,8 @@ bool load_config(const std::string& path) {
     config.server_host = root["server"]["ip"].as<std::string>();
     config.server_port = root["server"]["port"].as<std::string>();
     config.ca_file = root["tls"]["ca"].as<std::string>();
+    config.cert_file = root["tls"]["cert"].as<std::string>();
+    config.key_file = root["tls"]["key"].as<std::string>();
     config.request_id = root["request"]["id"].as<std::string>();
     config.request_ip = root["request"]["ip"].as<std::string>();
     config.request_purpose = root["request"]["purpose"].as<std::string>();
@@ -56,18 +60,24 @@ bool load_config(const std::string& path) {
   }
 }
 
+struct HttpJsonResponse {
+  int status_code;
+  nlohmann::json body;
+};
+
 // Make an HTTPS POST request and return JSON response
-json https_post(asio::io_context& ioc, ssl::context& ctx, const std::string& host,
-                const std::string& port, const std::string& target, const json& body) {
+HttpJsonResponse https_post(asio::io_context& ioc, ssl::context& ctx, const std::string& host,
+                            const std::string& port, const std::string& target, const json& body) {
   try {
     tcp::resolver resolver(ioc);
     auto const results = resolver.resolve(host, port);
 
     beast::ssl_stream<beast::tcp_stream> stream(ioc, ctx);
 
-    if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str()))
+    if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str())) {
       throw beast::system_error(
           beast::error_code(static_cast<int>(::ERR_get_error()), asio::error::get_ssl_category()));
+    }
 
     beast::get_lowest_layer(stream).connect(results);
     stream.handshake(ssl::stream_base::client);
@@ -87,13 +97,14 @@ json https_post(asio::io_context& ioc, ssl::context& ctx, const std::string& hos
 
     beast::error_code ec;
     stream.shutdown(ec);
-    if (ec == asio::error::eof) ec = {};  // ignore EOF
-    if (ec) throw beast::system_error{ec};
 
-    return json::parse(res.body());
+    HttpJsonResponse result;
+    result.status_code = res.result_int();
+    result.body = json::parse(res.body());
+    return result;
   } catch (const std::exception& e) {
-    std::cerr << "HTTPS POST error: " << e.what() << "\n";
-    return {};
+    std::cerr << "[https_post] HTTPS POST error: " << e.what() << "\n";
+    return {-1, {}};
   }
 }
 
@@ -110,6 +121,8 @@ int main(int argc, char** argv) {
 
   try {
     ssl_ctx.load_verify_file(config.ca_file);
+    ssl_ctx.use_certificate_file(config.cert_file, ssl::context::pem);
+    ssl_ctx.use_private_key_file(config.key_file, ssl::context::pem);
     ssl_ctx.set_verify_mode(ssl::verify_peer);
   } catch (const std::exception& e) {
     std::cerr << "SSL context error: " << e.what() << "\n";
@@ -127,13 +140,12 @@ int main(int argc, char** argv) {
   auto resp =
       https_post(ioc, ssl_ctx, config.server_host, config.server_port, "/request", request_payload);
 
-  std::cerr << resp << "\n" << resp.dump() << "\n";
-  if (!resp.contains("request_id")) {
-    std::cerr << "Invalid /request response: " << resp.dump() << "\n";
+  if (!resp.body.contains("request_id")) {
+    std::cerr << "Invalid /request response: " << resp.body.dump() << "\n";
     return 1;
   }
 
-  std::string rid = resp["request_id"];
+  std::string rid = resp.body["request_id"];
   std::string ws_target = "/ws/" + rid;
 
   tcp::resolver resolver{ioc};
@@ -145,9 +157,8 @@ int main(int argc, char** argv) {
   ws.next_layer().handshake(ssl::stream_base::client);
   ws.handshake(config.server_host, ws_target);
 
-  std::cout << "WebSocket connected to " << ws_target << std::endl;
-
   std::atomic<bool> wait{true};
+  std::atomic<bool> wasDeclined{false};
   std::string vaultToken;
   std::mutex token_mutex;
 
@@ -166,6 +177,10 @@ int main(int argc, char** argv) {
           vaultToken = msg["vault_token"];
           wait = false;
           break;
+        } else if (msg.contains("cmd") && msg["cmd"] == "declined") {
+          wasDeclined = true;
+          wait = false;
+          break;
         }
       }
     } catch (const std::exception& e) {
@@ -178,11 +193,21 @@ int main(int argc, char** argv) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 
-  ws.close(websocket::close_code::normal);
   reader.join();
+  ws.close(websocket::close_code::normal);
+
+  if (wasDeclined) {
+    std::cerr << "[ERROR] Request was declined by admin.\n";
+    return 1;
+  }
 
   std::lock_guard<std::mutex> lock(token_mutex);
-  std::cout << "Received Vault Token: " << vaultToken << "\n";
+  if (vaultToken.empty()) {
+    std::cerr << "[ERROR] No Vault token received.\n";
+    return 1;
+  }
+
+  std::cout << vaultToken << std::endl;
 
   return 0;
 }
