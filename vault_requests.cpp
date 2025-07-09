@@ -1,10 +1,15 @@
 #include <yaml-cpp/yaml.h>
 
+#include <atomic>
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/beast.hpp>
+#include <boost/beast/core.hpp>
 #include <boost/beast/ssl.hpp>
+#include <boost/beast/websocket.hpp>
+#include <boost/beast/websocket/ssl.hpp>
 #include <iostream>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
@@ -14,6 +19,7 @@ namespace asio = boost::asio;
 namespace ssl = asio::ssl;
 namespace beast = boost::beast;
 namespace http = beast::http;
+namespace websocket = beast::websocket;
 using tcp = asio::ip::tcp;
 using json = nlohmann::json;
 
@@ -99,7 +105,7 @@ int main(int argc, char** argv) {
 
   if (!load_config(argv[1])) return 1;
 
-  asio::io_context ioc;
+  boost::asio::io_context ioc;
   ssl::context ssl_ctx{ssl::context::tlsv12_client};
 
   try {
@@ -110,7 +116,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  // Step 1: Send the initial request
+  // Step 1: Send initial /request
   json request_payload = {{"cmd", "request"},
                           {"id", config.request_id},
                           {"ip", config.request_ip},
@@ -121,36 +127,62 @@ int main(int argc, char** argv) {
   auto resp =
       https_post(ioc, ssl_ctx, config.server_host, config.server_port, "/request", request_payload);
 
+  std::cerr << resp << "\n" << resp.dump() << "\n";
   if (!resp.contains("request_id")) {
     std::cerr << "Invalid /request response: " << resp.dump() << "\n";
     return 1;
   }
 
   std::string rid = resp["request_id"];
-  std::cerr << "[INFO] Waiting for approval of request_id: " << rid << "\n";
+  std::string ws_target = "/ws/" + rid;
 
-  // Step 2: Poll /list every 2s until vault_token is available
-  while (true) {
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+  tcp::resolver resolver{ioc};
+  websocket::stream<beast::ssl_stream<tcp::socket>> ws{ioc, ssl_ctx};
 
-    json list_payload = {{"cmd", "list"}};
-    auto list_resp =
-        https_post(ioc, ssl_ctx, config.server_host, config.server_port, "/list", list_payload);
+  auto const results = resolver.resolve(config.server_host, config.server_port);
+  boost::asio::connect(ws.next_layer().next_layer(), results.begin(), results.end());
 
-    if (!list_resp.is_array()) {
-      std::cerr << "Invalid /list response: " << list_resp.dump() << "\n";
-      continue;
-    }
+  ws.next_layer().handshake(ssl::stream_base::client);
+  ws.handshake(config.server_host, ws_target);
 
-    for (const auto& entry : list_resp) {
-      if (entry.value("request_id", "") == rid && entry.contains("vault_token")) {
-        std::cout << entry["vault_token"].get<std::string>() << "\n";
-        return 0;
+  std::cout << "WebSocket connected to " << ws_target << std::endl;
+
+  std::atomic<bool> wait{true};
+  std::string vaultToken;
+  std::mutex token_mutex;
+
+  std::thread reader([&]() {
+    beast::flat_buffer buffer;
+    try {
+      while (true) {
+        buffer.consume(buffer.size());
+        ws.read(buffer);
+        std::string msg_str = beast::buffers_to_string(buffer.data());
+        json msg = json::parse(msg_str, nullptr, false);
+        if (!msg.is_object()) continue;
+
+        if (msg.contains("cmd") && msg["cmd"] == "approved" && msg.contains("vault_token")) {
+          std::lock_guard<std::mutex> lock(token_mutex);
+          vaultToken = msg["vault_token"];
+          wait = false;
+          break;
+        }
       }
+    } catch (const std::exception& e) {
+      std::cerr << "\nWebSocket read error: " << e.what() << "\n";
     }
+  });
 
-    std::cerr << ".";  // Heartbeat
+  // Wait until approval
+  while (wait.load()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
+
+  ws.close(websocket::close_code::normal);
+  reader.join();
+
+  std::lock_guard<std::mutex> lock(token_mutex);
+  std::cout << "Received Vault Token: " << vaultToken << "\n";
 
   return 0;
 }
