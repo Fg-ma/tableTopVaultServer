@@ -256,6 +256,16 @@ auto checkOrigin = [](uWS::HttpRequest* req) {
   return origin == expected_origin;
 };
 
+std::string getExecutablePath() {
+  fs::path path = fs::canonical("/proc/self/exe").parent_path();
+  if (path.filename() == "build") {
+    path = path.parent_path();
+  }
+  return path.string();
+}
+
+const std::string ROOT_DIR = getExecutablePath();
+
 int main(int argc, char** argv) {
   if (argc != 2) {
     std::cerr << "Usage: " << argv[0] << " <config.yaml>\n";
@@ -324,7 +334,7 @@ int main(int argc, char** argv) {
 
     std::string filePath;
 
-    filePath = "../src" + path;
+    filePath = ROOT_DIR + "/src" + path;
 
     std::ifstream file(filePath, std::ios::binary);
 
@@ -375,9 +385,9 @@ int main(int argc, char** argv) {
 
     // Serve transpiled JS first
     if (path.rfind("/loginPage/dist", 0) == 0) {
-      filePath = ".." + path.substr(std::string("/loginPage").length());
+      filePath = ROOT_DIR + path.substr(std::string("/loginPage").length());
     } else {
-      filePath = "../src" + path;
+      filePath = ROOT_DIR + "/src" + path;
     }
 
     std::ifstream file(filePath, std::ios::binary);
@@ -426,9 +436,9 @@ int main(int argc, char** argv) {
     std::string filePath;
 
     if (path.rfind("/dashboard/dist", 0) == 0) {
-      filePath = ".." + path.substr(std::string("/dashboard").length());
+      filePath = ROOT_DIR + path.substr(std::string("/dashboard").length());
     } else {
-      filePath = "../src" + path;
+      filePath = ROOT_DIR + "/src" + path;
     }
 
     std::ifstream file(filePath, std::ios::binary);

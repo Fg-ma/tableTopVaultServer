@@ -102,3 +102,16 @@ target_include_directories(vault_requests
 )
 
 install(TARGETS vault_requests RUNTIME DESTINATION bin)
+
+add_executable(vault vault.cpp)
+
+target_link_libraries(vault
+    PRIVATE
+      Threads::Threads
+      CURL::libcurl
+)
+
+target_include_directories(vault
+    PRIVATE
+      ${CURL_INCLUDE_DIRS}
+)
