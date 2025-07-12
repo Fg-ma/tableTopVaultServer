@@ -6,7 +6,7 @@ events {
 }
 
 http {
-    error_log {{ LOGS }}/error.log debug;
+    error_log {{ LOGS }}/error.log error;
 
     include {{ INSTALL }}/conf/mime.types;
     default_type application/octet-stream;
