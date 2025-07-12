@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(VaultServer)
+project(vault)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -52,7 +52,13 @@ file(GLOB_RECURSE UWS_SRC
 
 # Build VaultServer by compiling your server + uWebSockets .cpp files
 add_executable(${PROJECT_NAME}
-  server.cpp
+  vault.cpp
+  src/server/serverUtils.cpp
+  src/server/schema.cpp
+  src/server/routes.cpp
+  src/server/sockets.cpp
+  src/server/vaultClient.cpp
+  src/server/nginx.cpp
   ${UWS_SRC}
 )
 
@@ -102,16 +108,3 @@ target_include_directories(vault_requests
 )
 
 install(TARGETS vault_requests RUNTIME DESTINATION bin)
-
-add_executable(vault vault.cpp)
-
-target_link_libraries(vault
-    PRIVATE
-      Threads::Threads
-      CURL::libcurl
-)
-
-target_include_directories(vault
-    PRIVATE
-      ${CURL_INCLUDE_DIRS}
-)

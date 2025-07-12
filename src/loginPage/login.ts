@@ -1,19 +1,29 @@
+const hashPassword = async (password: string) => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+};
+
 document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const vaultTokenInput = document.getElementById(
-    "vaultToken"
+  const vaultPasswordInput = document.getElementById(
+    "vaultPassword"
   ) as HTMLInputElement;
 
-  if (!vaultTokenInput) return;
+  if (!vaultPasswordInput) return;
 
-  const token = vaultTokenInput.value;
   const res = await fetch("/login", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ cmd: "login", token }),
+    body: JSON.stringify({
+      cmd: "login",
+      password: hashPassword(vaultPasswordInput.value),
+    }),
   });
 
   if (res.ok) {
@@ -28,10 +38,10 @@ document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
 });
 
 document
-  .getElementById("toggle-token-visibility")
+  .getElementById("toggle-password-visibility")
   ?.addEventListener("click", () => {
-    const input = document.getElementById("vaultToken") as HTMLInputElement;
-    const btn = document.getElementById("toggle-token-visibility");
+    const input = document.getElementById("vaultPassword") as HTMLInputElement;
+    const btn = document.getElementById("toggle-password-visibility");
     const img = btn?.querySelector("img");
 
     if (!input || !btn || !img) return;
@@ -40,5 +50,5 @@ document
     img.src = isHidden
       ? "/public/svgs/visibilityOffIcon.svg"
       : "/public/svgs/visibilityIcon.svg";
-    img.alt = isHidden ? "Hide token" : "Show token";
+    img.alt = isHidden ? "Hide password" : "Show password";
   });

@@ -1,29 +1,28 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
+const hashPassword = async (password) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 };
-var _a, _b;
-(_a = document.getElementById("loginForm")) === null || _a === void 0 ? void 0 : _a.addEventListener("submit", (e) => __awaiter(void 0, void 0, void 0, function* () {
+document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const vaultTokenInput = document.getElementById("vaultToken");
-    if (!vaultTokenInput)
+    const vaultPasswordInput = document.getElementById("vaultPassword");
+    if (!vaultPasswordInput)
         return;
-    const token = vaultTokenInput.value;
-    const res = yield fetch("/login", {
+    const res = await fetch("/login", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({ cmd: "login", token }),
+        body: JSON.stringify({
+            cmd: "login",
+            password: hashPassword(vaultPasswordInput.value),
+        }),
     });
     if (res.ok) {
-        const data = yield res.json();
+        const data = await res.json();
         localStorage.setItem("session_token", data.session_token);
         window.location.href = "/dashboard/";
     }
@@ -32,12 +31,13 @@ var _a, _b;
         if (loginError)
             loginError.textContent = "Invalid token";
     }
-}));
-(_b = document
-    .getElementById("toggle-token-visibility")) === null || _b === void 0 ? void 0 : _b.addEventListener("click", () => {
-    const input = document.getElementById("vaultToken");
-    const btn = document.getElementById("toggle-token-visibility");
-    const img = btn === null || btn === void 0 ? void 0 : btn.querySelector("img");
+});
+document
+    .getElementById("toggle-password-visibility")
+    ?.addEventListener("click", () => {
+    const input = document.getElementById("vaultPassword");
+    const btn = document.getElementById("toggle-password-visibility");
+    const img = btn?.querySelector("img");
     if (!input || !btn || !img)
         return;
     const isHidden = input.type === "password";
@@ -45,5 +45,5 @@ var _a, _b;
     img.src = isHidden
         ? "/public/svgs/visibilityOffIcon.svg"
         : "/public/svgs/visibilityIcon.svg";
-    img.alt = isHidden ? "Hide token" : "Show token";
+    img.alt = isHidden ? "Hide password" : "Show password";
 });
