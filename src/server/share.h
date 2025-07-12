@@ -4,6 +4,7 @@
 
 struct Config {
   std::string ca;
+  std::string secrets;
   std::string server_ip;
   int server_port;
   std::string nginx_server_ip;

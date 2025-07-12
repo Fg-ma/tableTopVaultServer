@@ -71,6 +71,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 # Include directories for headers
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/lib/uWebSockets/src
+    ${CMAKE_SOURCE_DIR}/lib/uWebSockets/uSockets
     ${CMAKE_SOURCE_DIR}/lib/uWebSockets/uSockets/src
     ${CMAKE_SOURCE_DIR}/lib/uWebSockets/deps/libuv/include
     ${OPENSSL_INCLUDE_DIR}
@@ -79,6 +80,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE
+    ${CMAKE_SOURCE_DIR}/lib/uWebSockets/uSockets/libuSockets.a
     ${CMAKE_SOURCE_DIR}/lib/uWebSockets/uSockets/uSockets.a
     OpenSSL::SSL
     OpenSSL::Crypto

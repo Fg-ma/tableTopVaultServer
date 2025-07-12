@@ -6,7 +6,7 @@ events {
 }
 
 http {
-    error_log {{ LOGS }}/error.log error;
+    error_log {{ LOGS }}/error.log debug;
 
     include {{ INSTALL }}/conf/mime.types;
     default_type application/octet-stream;
@@ -42,7 +42,6 @@ http {
     }
 
     map "" $nginx_internal_token {
-        default "";
         include {{ INTERNAL_TOKEN }};
     }
 

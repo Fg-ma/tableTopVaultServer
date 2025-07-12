@@ -1,3 +1,7 @@
+path "secret/data/vault/nginx-internal-token" {
+  capabilities = ["read"]
+}
+
 path "secret/data/vault/table-top-vault-server-key.pem" {
   capabilities = ["read"]
 }

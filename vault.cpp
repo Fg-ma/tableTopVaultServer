@@ -60,6 +60,7 @@ bool load_config(const std::string& path) {
     auto cfg = YAML::LoadFile(path);
     auto share = cfg["share"];
     config.ca = share["ca"].as<std::string>();
+    config.secrets = share["secrets"].as<std::string>();
     auto srv = cfg["server"];
     config.server_ip = srv["ip"].as<std::string>();
     config.server_port = srv["port"].as<int>();
@@ -208,15 +209,17 @@ int main(int argc, char** argv) {
     password =
         SecureString(std::move(ServerUtils::instance().readPassword("Enter Vault password: ")));
 
-    char tmpfsDir[] = "/home/fg/Desktop/tableTopVaultServer/secrets";
-    if (!mkdir(tmpfsDir, 0700)) {
+    char tmpfsDir[PATH_MAX];
+    strncpy(tmpfsDir, config.secrets.c_str(), sizeof(tmpfsDir));
+    tmpfsDir[sizeof(tmpfsDir) - 1] = '\0';
+    if (mkdir(config.secrets.c_str(), 0777) != 0 && errno != EEXIST) {
       perror("mkdir failed");
       return 1;
     }
 
     if (!ServerUtils::instance().isAlreadyMounted(tmpfsDir)) {
       if (mount("tmpfs", tmpfsDir, "tmpfs", MS_NOEXEC | MS_NOSUID | MS_NODEV,
-                "size=1M,mode=0700") != 0) {
+                "size=1M,mode=0777") != 0) {
         perror("mount tmpfs failed");
         rmdir(tmpfsDir);
         return 1;
@@ -224,11 +227,9 @@ int main(int argc, char** argv) {
     }
 
     // Set restrictive permissions just in case
-    chmod(tmpfsDir, 0700);
+    chmod(tmpfsDir, 0777);
 
     // Now tmpfsDir is your RAM-only private secure directory
-    std::string securePath(tmpfsDir);
-
     securePath = tmpfsDir;
     mountedTmpfs = true;
 
@@ -238,7 +239,7 @@ int main(int argc, char** argv) {
                                           ROOT_DIR + "/nginx/nginx.conf");
 
     system(
-        "sudo /home/fg/Desktop/tableTopVaultServer/nginx-1.28.0/sbin/nginx -c "
+        "sudo /home/fg/Desktop/tableTopVaultServer/nginx-1.29.0/sbin/nginx -c "
         "/home/fg/Desktop/tableTopVaultServer/nginx/nginx.conf");
 
     Schema::instance().initSchemas();
