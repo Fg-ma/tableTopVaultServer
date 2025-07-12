@@ -1,6 +1,10 @@
 #pragma once
 
+#include <fstream>
+
 #include "../../lib/uWebSockets/src/App.h"
+#include "serverUtils.h"
+#include "share.h"
 
 class NGINX {
  public:
@@ -10,6 +14,8 @@ class NGINX {
 
  private:
   NGINX();
+  NGINX(const NGINX&) = delete;
+  NGINX& operator=(const NGINX&) = delete;
 
   static std::unique_ptr<NGINX> instance_;
 };

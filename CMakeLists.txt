@@ -59,6 +59,7 @@ add_executable(${PROJECT_NAME}
   src/server/sockets.cpp
   src/server/vaultClient.cpp
   src/server/nginx.cpp
+  src/server/sanitize.cpp
   ${UWS_SRC}
 )
 

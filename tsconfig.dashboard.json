@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": ["ESNext", "dom"],
+    "module": "es6",
+    "outDir": "./src/dashboard/dist",
+    "rootDir": "./src/dashboard/src",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["./src/dashboard/src"]
+}

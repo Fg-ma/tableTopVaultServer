@@ -1,6 +1,9 @@
 #pragma once
 
+#include <chrono>
 #include <string>
+
+#include "secureString.h"
 
 struct Config {
   std::string ca;
@@ -29,4 +32,18 @@ struct Config {
 
 struct WSData {
   std::string request_id;
+};
+
+struct SessionInfo {
+  SecureString token;
+  std::chrono::steady_clock::time_point expiresAt;
+
+  SessionInfo(SecureString&& t, std::chrono::steady_clock::time_point e)
+      : token(std::move(t)), expiresAt(e) {}
+
+  SessionInfo(SessionInfo&&) noexcept = default;
+  SessionInfo& operator=(SessionInfo&&) noexcept = default;
+
+  SessionInfo(const SessionInfo&) = delete;
+  SessionInfo& operator=(const SessionInfo&) = delete;
 };

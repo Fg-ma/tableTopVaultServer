@@ -3,6 +3,7 @@ cmake ..
 make
 
 npx tsc --watch
+npx tsc --build --watch
 
 ./VaultServer ../vault.conf
 

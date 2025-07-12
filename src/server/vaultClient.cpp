@@ -1,16 +1,5 @@
 #include "vaultClient.h"
 
-#include <curl/curl.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
-#include <fstream>
-#include <iostream>
-#include <nlohmann/json.hpp>
-
-#include "share.h"
-
 using json = nlohmann::json;
 
 extern Config config;
@@ -147,12 +136,10 @@ void VaultClient::vaultLogin() {
   if (res != CURLE_OK) throw std::runtime_error("Vault login failed");
 
   json j = json::parse(response);
-  VaultClient::clientToken = SecureString(j["auth"]["client_token"]);
+  VaultClient::clientToken = SecureString(j["auth"]["client_token"].get<std::string>());
 }
 
 void VaultClient::fetchVaultSecrets(const std::string& tmpfsDir) {
-  vaultLogin();
-
   std::vector<std::string> secrets = {
       "table-top-vault-server-key.pem",   "table-top-vault-server-dhparam-nginx.pem",
       "table-top-vault-server-nginx.pem", "table-top-vault-server-dhparam.pem",

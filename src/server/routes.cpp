@@ -1,22 +1,11 @@
 #include "routes.h"
 
-#include <fstream>
-#include <nlohmann/json-schema.hpp>
-#include <nlohmann/json.hpp>
-#include <sstream>
-
-#include "../../lib/uWebSockets/src/App.h"
-#include "serverUtils.h"
-#include "share.h"
-#include "vaultClient.h"
-
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 extern std::unordered_map<std::string, nlohmann::json_schema::json_validator> schema_map;
-extern std::unordered_map<std::string, nlohmann::json> pendingRequests;
-extern std::unordered_set<std::string> activeSessions;
-extern std::unordered_map<std::string, std::string> completedRequests;
+extern std::unordered_map<std::string, SecureJson> pendingRequests;
+extern std::vector<SessionInfo> sessionList;
 extern std::unordered_map<std::string, uWS::WebSocket<true, true, WSData*>*> wsClients;
 extern std::string ROOT_DIR;
 extern Config config;
@@ -47,13 +36,16 @@ Routes::Routes(uWS::SSLApp& app) {
       return;
     }
 
-    std::string path(req->getUrl());
+    std::string rawUrl(req->getUrl());
+    std::string subPath = rawUrl.substr(std::string("/public/").length());
+    auto safePathOpt = Sanitize::instance().sanitizePath(ROOT_DIR + "/src/public", subPath);
+    if (!safePathOpt) {
+      res->writeStatus("400 Bad Request")->end("Invalid or unsafe path");
+      return;
+    }
+    std::string safePath = *safePathOpt;
 
-    std::string filePath;
-
-    filePath = ROOT_DIR + "/src" + path;
-
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(safePath, std::ios::binary);
 
     if (!file) {
       res->writeStatus("404 Not Found")->end("File not found");
@@ -63,16 +55,16 @@ Routes::Routes(uWS::SSLApp& app) {
     std::stringstream buffer;
     buffer << file.rdbuf();
 
-    if (ServerUtils::instance().endsWith(path, ".css")) {
+    if (ServerUtils::instance().endsWith(safePath, ".css")) {
       res->writeHeader("Content-Type", "text/css");
-    } else if (ServerUtils::instance().endsWith(path, ".js") ||
-               ServerUtils::instance().endsWith(path, ".ts")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".js") ||
+               ServerUtils::instance().endsWith(safePath, ".ts")) {
       res->writeHeader("Content-Type", "application/javascript");
-    } else if (ServerUtils::instance().endsWith(path, ".html")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".html")) {
       res->writeHeader("Content-Type", "text/html");
-    } else if (ServerUtils::instance().endsWith(path, ".json")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".json")) {
       res->writeHeader("Content-Type", "application/json");
-    } else if (ServerUtils::instance().endsWith(path, ".svg")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".svg")) {
       res->writeHeader("Content-Type", "image/svg+xml");
     } else {
       res->writeHeader("Content-Type", "text/plain");
@@ -92,23 +84,21 @@ Routes::Routes(uWS::SSLApp& app) {
       return;
     }
 
-    std::string path(req->getUrl());
+    std::string rawUrl(req->getUrl());
+    std::string subPath = rawUrl.substr(std::string("/loginPage/").length());
+    auto safePathOpt = Sanitize::instance().sanitizePath(ROOT_DIR + "/src/loginPage", subPath);
+    if (!safePathOpt) {
+      res->writeStatus("400 Bad Request")->end("Invalid or unsafe path");
+      return;
+    }
+    std::string safePath = *safePathOpt;
 
     // Redirect "/loginPage" or "/loginPage/" to index
-    if (path == "/loginPage" || path == "/loginPage/") {
-      path = "/loginPage/public/login.html";
+    if (safePath == ROOT_DIR + "/loginPage" || safePath == ROOT_DIR + "/loginPage/") {
+      safePath = ROOT_DIR + "/src/loginPage/public/login.html";
     }
 
-    std::string filePath;
-
-    // Serve transpiled JS first
-    if (path.rfind("/loginPage/dist", 0) == 0) {
-      filePath = ROOT_DIR + path.substr(std::string("/loginPage").length());
-    } else {
-      filePath = ROOT_DIR + "/src" + path;
-    }
-
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(safePath, std::ios::binary);
 
     if (!file) {
       res->writeStatus("404 Not Found")->end("File not found");
@@ -118,14 +108,14 @@ Routes::Routes(uWS::SSLApp& app) {
     std::stringstream buffer;
     buffer << file.rdbuf();
 
-    if (ServerUtils::instance().endsWith(path, ".css")) {
+    if (ServerUtils::instance().endsWith(safePath, ".css")) {
       res->writeHeader("Content-Type", "text/css");
-    } else if (ServerUtils::instance().endsWith(path, ".js") ||
-               ServerUtils::instance().endsWith(path, ".ts")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".js") ||
+               ServerUtils::instance().endsWith(safePath, ".ts")) {
       res->writeHeader("Content-Type", "application/javascript");
-    } else if (ServerUtils::instance().endsWith(path, ".html")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".html")) {
       res->writeHeader("Content-Type", "text/html");
-    } else if (ServerUtils::instance().endsWith(path, ".json")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".json")) {
       res->writeHeader("Content-Type", "application/json");
     } else {
       res->writeHeader("Content-Type", "text/plain");
@@ -145,22 +135,21 @@ Routes::Routes(uWS::SSLApp& app) {
       return;
     }
 
-    std::string path(req->getUrl());
+    std::string rawUrl(req->getUrl());
+    std::string subPath = rawUrl.substr(std::string("/dashboard/").length());
+    auto safePathOpt = Sanitize::instance().sanitizePath(ROOT_DIR + "/src/dashboard", subPath);
+    if (!safePathOpt) {
+      res->writeStatus("400 Bad Request")->end("Invalid or unsafe path");
+      return;
+    }
+    std::string safePath = *safePathOpt;
 
     // Redirect "/dashboard" or "/dashboard/" to index
-    if (path == "/dashboard" || path == "/dashboard/") {
-      path = "/dashboard/public/dashboard.html";
+    if (safePath == ROOT_DIR + "/dashboard" || safePath == ROOT_DIR + "/dashboard/") {
+      safePath = ROOT_DIR + "/src/dashboard/public/dashboard.html";
     }
 
-    std::string filePath;
-
-    if (path.rfind("/dashboard/dist", 0) == 0) {
-      filePath = ROOT_DIR + path.substr(std::string("/dashboard").length());
-    } else {
-      filePath = ROOT_DIR + "/src" + path;
-    }
-
-    std::ifstream file(filePath, std::ios::binary);
+    std::ifstream file(safePath, std::ios::binary);
 
     if (!file) {
       res->writeStatus("404 Not Found")->end("File not found");
@@ -170,14 +159,14 @@ Routes::Routes(uWS::SSLApp& app) {
     std::stringstream buffer;
     buffer << file.rdbuf();
 
-    if (ServerUtils::instance().endsWith(path, ".css")) {
+    if (ServerUtils::instance().endsWith(safePath, ".css")) {
       res->writeHeader("Content-Type", "text/css");
-    } else if (ServerUtils::instance().endsWith(path, ".js") ||
-               ServerUtils::instance().endsWith(path, ".ts")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".js") ||
+               ServerUtils::instance().endsWith(safePath, ".ts")) {
       res->writeHeader("Content-Type", "application/javascript");
-    } else if (ServerUtils::instance().endsWith(path, ".html")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".html")) {
       res->writeHeader("Content-Type", "text/html");
-    } else if (ServerUtils::instance().endsWith(path, ".json")) {
+    } else if (ServerUtils::instance().endsWith(safePath, ".json")) {
       res->writeHeader("Content-Type", "application/json");
     } else {
       res->writeHeader("Content-Type", "text/plain");
@@ -211,13 +200,21 @@ Routes::Routes(uWS::SSLApp& app) {
         schema_map["login"].validate(j);
 
         if (password.has_value() && password->constantTimeEqual(j["password"].get<std::string>())) {
-          std::string sess = ServerUtils::instance().generateSessionToken();
-          activeSessions.insert(sess);
-          res->writeStatus("200 OK")
-              ->writeHeader("Content-Type", "application/json")
-              ->end(json{{"status", "ok"}, {"session_token", sess}}.dump());
+          SessionInfo sess = ServerUtils::instance().generateSessionToken();
+          sessionList.push_back(std::move(sess));
+
+          res->writeStatus("200 OK");
+          res->writeHeader("Content-Type", "application/json");
+
+          std::string cookieValue(sess.token.c_str(), sess.token.size());
+          res->writeHeader("Set-Cookie",
+                           "session_token=" + cookieValue +
+                               "; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600");
+          std::fill(cookieValue.begin(), cookieValue.end(), '\0');
+
+          res->end(json{{"status", "ok"}}.dump());
         } else {
-          res->writeStatus("401 Unauthorized")->end("Invalid token");
+          res->writeStatus("401 Unauthorized")->end("Invalid password");
         }
       } catch (...) {
         res->writeStatus("400 Bad Request")->end("Invalid login payload");
@@ -251,9 +248,11 @@ Routes::Routes(uWS::SSLApp& app) {
             // Schema validation
             schema_map["request"].validate(j);
 
+            Sanitize::instance().recursiveSanitize(j, {{"ip", "."}, {"purpose", "-_"}});
+
             // Generate a request ID and store the request
-            std::string rid = "req-" + std::to_string(std::rand());
-            pendingRequests[rid] = j;
+            std::string rid = ServerUtils::instance().randomDigits(10);
+            pendingRequests[rid] = SecureJson(j);
 
             // Prepare response JSON
             json response = {{"request_id", rid}};
@@ -298,16 +297,23 @@ Routes::Routes(uWS::SSLApp& app) {
           try {
             auto j = json::parse(*buf);
             schema_map["approve"].validate(j);
+
+            Sanitize::instance().recursiveSanitize(j);
+
             std::string rid = j["request_id"].get<std::string>();
             auto it = pendingRequests.find(rid);
+
             if (it == pendingRequests.end()) {
               res->writeStatus("404 Not Found")->end();
             } else {
-              auto& reqData = it->second;
+              json reqData = it->second.getJson();
+
               auto token = VaultClient::instance().generateOneTimeToken(
                   rid, reqData["num_uses"].get<int>(),
                   reqData["policies"].get<std::vector<std::string>>());
+
               pendingRequests.erase(it);
+
               if (auto it = wsClients.find(rid); it != wsClients.end()) {
                 json msg = {{"cmd", "approved"}, {"vault_token", token}};
                 it->second->send(msg.dump(), uWS::OpCode::TEXT);
@@ -346,6 +352,9 @@ Routes::Routes(uWS::SSLApp& app) {
           try {
             auto j = json::parse(*buf);
             schema_map["decline"].validate(j);
+
+            Sanitize::instance().recursiveSanitize(j);
+
             std::string rid = j["request_id"].get<std::string>();
             auto it = pendingRequests.find(rid);
             if (it == pendingRequests.end()) {
@@ -380,8 +389,8 @@ Routes::Routes(uWS::SSLApp& app) {
     }
 
     json arr = json::array();
-    for (const auto& [rid, reqData] : pendingRequests) {
-      json entry = reqData;
+    for (const auto& [rid, secureReq] : pendingRequests) {
+      json entry = secureReq.getJson();
       entry["request_id"] = rid;
       arr.push_back(entry);
     }

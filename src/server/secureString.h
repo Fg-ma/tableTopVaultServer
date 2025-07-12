@@ -19,6 +19,16 @@ class SecureString {
     data[len] = '\0';  // null-terminate for c_str()
   }
 
+  // Construct from a std::vector<char>
+  explicit SecureString(const std::vector<char>& input) {
+    len = input.size();
+    data = static_cast<unsigned char*>(sodium_malloc(len + 1));
+    if (!data) throw std::bad_alloc();
+
+    memcpy(data, input.data(), len);
+    data[len] = '\0';
+  }
+
   ~SecureString() {
     sodium_memzero(data, len);  // wipe memory
     sodium_free(data);          // release secure memory
@@ -55,15 +65,6 @@ class SecureString {
     volatile unsigned char result = 0;
     for (size_t i = 0; i < len; ++i) {
       result |= data[i] ^ static_cast<unsigned char>(input[i]);
-    }
-    return result == 0;
-  }
-
-  bool constantTimeEqualHash(const std::string& clientHash) const {
-    if (clientHash.size() != len) return false;
-    volatile unsigned char result = 0;
-    for (size_t i = 0; i < len; ++i) {
-      result |= data[i] ^ static_cast<unsigned char>(clientHash[i]);
     }
     return result == 0;
   }

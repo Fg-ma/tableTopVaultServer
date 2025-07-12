@@ -32,7 +32,9 @@
 #include "lib/uWebSockets/src/App.h"
 #include "src/server/nginx.h"
 #include "src/server/routes.h"
+#include "src/server/sanitize.h"
 #include "src/server/schema.h"
+#include "src/server/secureJson.h"
 #include "src/server/secureString.h"
 #include "src/server/serverUtils.h"
 #include "src/server/share.h"
@@ -46,9 +48,8 @@ std::string securePath;
 bool mountedTmpfs = false;
 
 std::unordered_map<std::string, uWS::WebSocket<true, true, WSData*>*> wsClients;
-std::unordered_set<std::string> activeSessions;
-std::unordered_map<std::string, json> pendingRequests;
-std::unordered_map<std::string, std::string> completedRequests;
+inline std::vector<SessionInfo> sessionList;
+std::unordered_map<std::string, SecureJson> pendingRequests;
 std::optional<SecureString> password;
 
 std::string ROOT_DIR = ServerUtils::instance().getExecutablePath();
@@ -92,109 +93,16 @@ bool load_config(const std::string& path) {
   }
 }
 
-void secureWipeDirectory(const std::string& dirPath) {
-  DIR* dir = opendir(dirPath.c_str());
-  if (!dir) {
-    perror(("Failed to open directory: " + dirPath).c_str());
-    return;
-  }
-
-  struct dirent* entry;
-  while ((entry = readdir(dir)) != nullptr) {
-    // skip . and ..
-    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-
-    std::string fullPath = dirPath + "/" + entry->d_name;
-
-    struct stat st;
-    if (stat(fullPath.c_str(), &st) != 0) {
-      perror(("stat failed: " + fullPath).c_str());
-      continue;
-    }
-
-    if (S_ISDIR(st.st_mode)) {
-      // recurse
-      secureWipeDirectory(fullPath);
-      if (rmdir(fullPath.c_str()) != 0) {
-        perror(("rmdir failed: " + fullPath).c_str());
-      }
-    } else if (S_ISREG(st.st_mode)) {
-      // wipe the file securely
-      int fd = open(fullPath.c_str(), O_WRONLY);
-      if (fd < 0) {
-        perror(("Failed to open file for wiping: " + fullPath).c_str());
-        continue;
-      }
-
-      off_t size = st.st_size;
-      if (size > 0) {
-        std::vector<unsigned char> randomData(size);
-        randombytes_buf(randomData.data(), size);
-
-        ssize_t written = 0;
-        size_t toWrite = size;
-        const unsigned char* bufPtr = randomData.data();
-        while (toWrite > 0) {
-          ssize_t res = write(fd, bufPtr + written, toWrite);
-          if (res <= 0) {
-            perror(("Write failed while wiping file: " + fullPath).c_str());
-            break;
-          }
-          toWrite -= res;
-          written += res;
-        }
-
-        fsync(fd);
-      }
-      close(fd);
-
-      // unlink after wipe
-      if (unlink(fullPath.c_str()) != 0) {
-        perror(("unlink failed: " + fullPath).c_str());
-      }
-    }
-  }
-
-  closedir(dir);
-}
-
-void cleanup(int signum) {
-  std::cout << "\n[*] Cleaning up...\n";
-
-  // Wipe secrets in tmpfs dir before unmounting
-  if (mountedTmpfs && !securePath.empty()) {
-    std::cout << "[*] Securely wiping tmpfs directory contents: " << securePath << "\n";
-    secureWipeDirectory(securePath);
-
-    std::cout << "[*] Unmounting tmpfs and deleting directory: " << securePath << "\n";
-    if (umount(securePath.c_str()) != 0) {
-      perror("umount failed");
-    }
-
-    if (rmdir(securePath.c_str()) != 0) {
-      perror("rmdir failed");
-    }
-  }
-
-  // Stop NGINX - prefer direct kill if you have PID, else fallback to system
-  std::cout << "[*] Stopping NGINX...\n";
-  if (system("sudo pkill -f nginx") != 0) {
-    std::cerr << "Failed to stop nginx\n";
-  }
-
-  std::cout << "[*] Checking if ports 2222 and 2223 are still bound...\n";
-  system("sudo lsof -i :2222 -i :2223 || echo \"[*] Ports are clean.\"");
-
-  std::cout << "[✔] Cleanup complete.\n";
-  std::exit(0);
+void signalHandler(int signum) {
+  ServerUtils::instance().cleanup(signum);
 }
 
 int main(int argc, char** argv) {
   try {
-    std::atexit([]() { cleanup(0); });
+    std::atexit([]() { ServerUtils::instance().cleanup(0); });
 
     struct sigaction sa{};
-    sa.sa_handler = cleanup;
+    sa.sa_handler = signalHandler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
     sigaction(SIGINT, &sa, nullptr);
@@ -206,8 +114,27 @@ int main(int argc, char** argv) {
     }
     if (!load_config(argv[1]) || sodium_init() < 0) return 1;
 
-    password =
-        SecureString(std::move(ServerUtils::instance().readPassword("Enter Vault password: ")));
+    for (int attempt = 1; attempt <= 3; ++attempt) {
+      try {
+        password =
+            SecureString(std::move(ServerUtils::instance().readPassword("Enter Vault password: ")));
+        VaultClient::instance().vaultLogin();
+
+        // Login successful, break out
+        break;
+      } catch (const std::exception& ex) {
+        std::cerr << "Vault login failed (attempt " << attempt << "/" << 3 << "): " << ex.what()
+                  << "\n";
+
+        // Clear memory of failed password
+        password.reset();
+
+        if (attempt == 3) {
+          std::cerr << "Maximum login attempts exceeded. Exiting.\n";
+          return EXIT_FAILURE;
+        }
+      }
+    }
 
     char tmpfsDir[PATH_MAX];
     strncpy(tmpfsDir, config.secrets.c_str(), sizeof(tmpfsDir));
@@ -267,7 +194,7 @@ int main(int argc, char** argv) {
     return 0;
   } catch (const std::exception& ex) {
     std::cerr << "Unhandled exception: " << ex.what() << "\n";
-    cleanup(1);
+    ServerUtils::instance().cleanup(1);
     return 1;
   }
 }

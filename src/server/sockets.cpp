@@ -1,23 +1,9 @@
 #include "sockets.h"
 
-#include <fstream>
-#include <nlohmann/json-schema.hpp>
-#include <nlohmann/json.hpp>
-#include <sstream>
-
-#include "../../lib/uWebSockets/src/App.h"
-#include "share.h"
-
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-extern std::unordered_map<std::string, nlohmann::json_schema::json_validator> schema_map;
-extern std::unordered_map<std::string, nlohmann::json> pendingRequests;
-extern std::unordered_set<std::string> activeSessions;
-extern std::unordered_map<std::string, std::string> completedRequests;
 extern std::unordered_map<std::string, uWS::WebSocket<true, true, WSData*>*> wsClients;
-extern std::string ROOT_DIR;
-extern Config config;
 
 std::unique_ptr<Sockets> Sockets::instance_ = nullptr;
 

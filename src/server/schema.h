@@ -17,8 +17,10 @@ class Schema {
 
  private:
   Schema();
-
-  json getSchema(const std::string& cmd);
+  Schema(const Schema&) = delete;
+  Schema& operator=(const Schema&) = delete;
 
   static std::unique_ptr<Schema> instance_;
+
+  json getSchema(const std::string& cmd);
 };

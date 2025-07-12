@@ -1,6 +1,6 @@
 .vscode
-/lib
 /build
+/lib
 /secrets
 /nginx-1.29.0/*
 !/nginx-1.29.0/sbin/

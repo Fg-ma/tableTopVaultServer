@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": ["ESNext", "dom"],
+    "module": "es6",
+    "outDir": "./src/loginPage/dist",
+    "rootDir": "./src/loginPage/src",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["./src/loginPage/src"]
+}

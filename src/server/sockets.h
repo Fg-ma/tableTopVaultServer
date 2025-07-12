@@ -1,6 +1,12 @@
 #pragma once
 
+#include <fstream>
+#include <nlohmann/json-schema.hpp>
+#include <nlohmann/json.hpp>
+#include <sstream>
+
 #include "../../lib/uWebSockets/src/App.h"
+#include "share.h"
 
 class Sockets {
  public:
@@ -9,6 +15,8 @@ class Sockets {
 
  private:
   explicit Sockets(uWS::SSLApp& app);
+  Sockets(const Sockets&) = delete;
+  Sockets& operator=(const Sockets&) = delete;
 
   static std::unique_ptr<Sockets> instance_;
 };

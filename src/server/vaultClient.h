@@ -1,11 +1,20 @@
 #pragma once
 
+#include <curl/curl.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <fstream>
+#include <iostream>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "secureString.h"
+#include "share.h"
 
 class VaultClient {
  public:
@@ -24,10 +33,12 @@ class VaultClient {
 
  private:
   VaultClient();
+  VaultClient(const VaultClient&) = delete;
+  VaultClient& operator=(const VaultClient&) = delete;
 
-  static size_t writeCallback(void* contents, size_t size, size_t nmemb, void* userp);
+  static std::unique_ptr<VaultClient> instance_;
 
   std::optional<SecureString> clientToken;
 
-  static std::unique_ptr<VaultClient> instance_;
+  static size_t writeCallback(void* contents, size_t size, size_t nmemb, void* userp);
 };

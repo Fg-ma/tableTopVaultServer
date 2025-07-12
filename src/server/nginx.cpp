@@ -1,10 +1,5 @@
 #include "nginx.h"
 
-#include <fstream>
-
-#include "serverUtils.h"
-#include "share.h"
-
 extern Config config;
 
 NGINX::NGINX() {}

@@ -1,13 +1,7 @@
 {
-  "compilerOptions": {
-    "target": "esnext",
-    "lib": ["ESNext", "dom"],
-    "module": "es6",
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true
-  },
-  "include": ["src"]
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.loginpage.json" },
+    { "path": "./tsconfig.dashboard.json" }
+  ]
 }

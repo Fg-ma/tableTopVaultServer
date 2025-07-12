@@ -4,13 +4,11 @@ class ServerRequests {
   loadRequests = async () => {
     try {
       const res = await fetch("/list", {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("session_token")}`,
-        },
+        credentials: "include",
       });
 
       if (res.status === 401) {
-        window.location.href = "/loginPage/";
+        // window.location.href = "/loginPage/";
         return;
       }
 
@@ -68,8 +66,8 @@ class ServerRequests {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("session_token")}`,
         },
+        credentials: "include",
         body: JSON.stringify({ cmd: "approve", request_id: requestId }),
       });
       if (res.ok) {
@@ -86,8 +84,8 @@ class ServerRequests {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("session_token")}`,
         },
+        credentials: "include",
         body: JSON.stringify({ cmd: "decline", request_id: requestId }),
       });
       if (res.ok) {

@@ -1,18 +1,9 @@
-const hashPassword = async (password: string) => {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-};
-
 document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const vaultPasswordInput = document.getElementById(
     "vaultPassword"
   ) as HTMLInputElement;
-
   if (!vaultPasswordInput) return;
 
   const res = await fetch("/login", {
@@ -22,18 +13,16 @@ document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
     },
     body: JSON.stringify({
       cmd: "login",
-      password: hashPassword(vaultPasswordInput.value),
+      password: vaultPasswordInput.value,
     }),
+    credentials: "include",
   });
 
   if (res.ok) {
-    const data = await res.json();
-    localStorage.setItem("session_token", data.session_token);
-
     window.location.href = "/dashboard/";
   } else {
     const loginError = document.getElementById("loginError");
-    if (loginError) loginError.textContent = "Invalid token";
+    if (loginError) loginError.textContent = "Invalid password";
   }
 });
 
