@@ -308,7 +308,8 @@ Routes::Routes(uWS::SSLApp& app) {
             // Schema validation
             schema_map["request"].validate(j);
 
-            Sanitize::instance().recursiveSanitize(j, {{"ip", "."}, {"purpose", "-_"}});
+            Sanitize::instance().recursiveSanitize(
+                j, {{"ip", "."}, {"policies", "-_"}, {"purpose", " "}});
 
             // Generate a request ID and store the request
             std::string rid = ServerUtils::instance().randomDigits(10);

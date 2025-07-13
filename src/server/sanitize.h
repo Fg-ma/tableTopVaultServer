@@ -18,7 +18,8 @@ class Sanitize {
                                           const std::string& requestedPath);
 
   void recursiveSanitize(json& j,
-                         const std::unordered_map<std::string, std::string>& escapeRules = {});
+                         const std::unordered_map<std::string, std::string>& escapeRules = {},
+                         const std::string& currentKey = "");
 
  private:
   Sanitize();
@@ -27,7 +28,7 @@ class Sanitize {
 
   static std::unique_ptr<Sanitize> instance_;
 
-  std::string escapeChars(const std::string& input, const std::string& charsToEscape);
+  std::string preserveChars(const std::string& input, const std::string& allowedExtra);
 
   std::string sanitizeToAlnum(const std::string& input);
 };

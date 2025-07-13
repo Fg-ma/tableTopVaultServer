@@ -40,38 +40,43 @@ std::string Sanitize::sanitizeToAlnum(const std::string& input) {
   return result;
 }
 
-std::string Sanitize::escapeChars(const std::string& input, const std::string& charsToEscape) {
+std::string Sanitize::preserveChars(const std::string& input, const std::string& allowedExtra) {
   std::string result;
   for (char c : input) {
-    if (charsToEscape.find(c) != std::string::npos) {
-      result += '\\';
+    if (std::isalnum(static_cast<unsigned char>(c)) || allowedExtra.find(c) != std::string::npos) {
+      result += c;
     }
-    result += c;
   }
   return result;
 }
 
 void Sanitize::recursiveSanitize(json& j,
-                                 const std::unordered_map<std::string, std::string>& escapeRules) {
+                                 const std::unordered_map<std::string, std::string>& escapeRules,
+                                 const std::string& currentKey) {
   if (j.is_object()) {
     for (auto& [key, value] : j.items()) {
       if (value.is_string()) {
         std::string strVal = value.get<std::string>();
         auto it = escapeRules.find(key);
         if (it != escapeRules.end()) {
-          value = escapeChars(strVal, it->second);
+          value = preserveChars(strVal, it->second);
         } else {
           value = sanitizeToAlnum(strVal);
         }
       } else {
-        recursiveSanitize(value, escapeRules);
+        recursiveSanitize(value, escapeRules, key);
       }
     }
   } else if (j.is_array()) {
     for (auto& item : j) {
-      recursiveSanitize(item, escapeRules);
+      recursiveSanitize(item, escapeRules, currentKey);
     }
   } else if (j.is_string()) {
-    j = sanitizeToAlnum(j.get<std::string>());
+    auto it = escapeRules.find(currentKey);
+    if (it != escapeRules.end()) {
+      j = preserveChars(j.get<std::string>(), it->second);
+    } else {
+      j = sanitizeToAlnum(j.get<std::string>());
+    }
   }
 }

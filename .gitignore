@@ -2,6 +2,7 @@
 /build
 /lib
 /secrets
+/certs
 /nginx-1.29.0/*
 !/nginx-1.29.0/sbin/
 !/nginx-1.29.0/sbin/**
