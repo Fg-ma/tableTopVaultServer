@@ -15,6 +15,7 @@ document.getElementById("loginForm")?.addEventListener("submit", async (e) => {
         }),
         credentials: "include",
     });
+    vaultPasswordInput.value = "";
     if (res.ok) {
         window.location.href = "/dashboard/";
     }

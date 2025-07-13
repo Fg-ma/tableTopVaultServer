@@ -166,7 +166,7 @@ void VaultClient::fetchVaultSecrets(const std::string& tmpfsDir) {
       std::cerr << "Failed to open file descriptor for fsync: " << filePath << std::endl;
     }
 
-    chmod(filePath.c_str(), 0777);
+    chmod(filePath.c_str(), 0400);
   }
 
   VaultClient::nginxInternalToken =
@@ -190,5 +190,5 @@ void VaultClient::fetchVaultSecrets(const std::string& tmpfsDir) {
     close(fd);
   }
 
-  chmod(filePath.c_str(), 0777);
+  chmod(filePath.c_str(), 0400);
 }

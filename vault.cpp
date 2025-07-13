@@ -1,33 +1,6 @@
-#include <curl/curl.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <openssl/dh.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
 #include <signal.h>
-#include <sodium.h>
-#include <sys/mount.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <yaml-cpp/yaml.h>
-
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <memory>
-#include <nlohmann/json-schema.hpp>
-#include <nlohmann/json.hpp>
-#include <random>
-#include <sstream>
-#include <string>
-#include <thread>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
 #include "lib/uWebSockets/src/App.h"
 #include "src/server/nginx.h"
@@ -139,14 +112,14 @@ int main(int argc, char** argv) {
     char tmpfsDir[PATH_MAX];
     strncpy(tmpfsDir, config.secrets.c_str(), sizeof(tmpfsDir));
     tmpfsDir[sizeof(tmpfsDir) - 1] = '\0';
-    if (mkdir(config.secrets.c_str(), 0777) != 0 && errno != EEXIST) {
+    if (mkdir(config.secrets.c_str(), 0700) != 0 && errno != EEXIST) {
       perror("mkdir failed");
       return 1;
     }
 
     if (!ServerUtils::instance().isAlreadyMounted(tmpfsDir)) {
       if (mount("tmpfs", tmpfsDir, "tmpfs", MS_NOEXEC | MS_NOSUID | MS_NODEV,
-                "size=1M,mode=0777") != 0) {
+                "size=1M,mode=0700") != 0) {
         perror("mount tmpfs failed");
         rmdir(tmpfsDir);
         return 1;
@@ -154,7 +127,7 @@ int main(int argc, char** argv) {
     }
 
     // Set restrictive permissions just in case
-    chmod(tmpfsDir, 0777);
+    chmod(tmpfsDir, 0700);
 
     // Now tmpfsDir is your RAM-only private secure directory
     securePath = tmpfsDir;
@@ -166,7 +139,7 @@ int main(int argc, char** argv) {
                                           ROOT_DIR + "/nginx/nginx.conf");
 
     system(
-        "sudo /home/fg/Desktop/tableTopVaultServer/nginx-1.29.0/sbin/nginx -c "
+        "/home/fg/Desktop/tableTopVaultServer/nginx-1.29.0/sbin/nginx -c "
         "/home/fg/Desktop/tableTopVaultServer/nginx/nginx.conf");
 
     Schema::instance().initSchemas();

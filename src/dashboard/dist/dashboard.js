@@ -7,7 +7,7 @@ class ServerRequests {
                 credentials: "include",
             });
             if (res.status === 401) {
-                // window.location.href = "/loginPage/";
+                window.location.href = "/loginPage/";
                 return;
             }
             if (!res.ok)
@@ -89,7 +89,31 @@ class ServerRequests {
             console.error(e);
         }
     };
+    sendLogout = async () => {
+        try {
+            await fetch("/logout", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                credentials: "include",
+            });
+            window.location.href = "/loginPage/";
+        }
+        catch (e) {
+            console.error(e);
+        }
+    };
 }
 const serverRequests = new ServerRequests();
+document.getElementById("sidebarToggle")?.addEventListener("click", () => {
+    document.getElementById("sidebar")?.classList.toggle("collapsed");
+});
+document.getElementById("sidebarToggleTab")?.addEventListener("click", () => {
+    document.getElementById("sidebar")?.classList.toggle("collapsed");
+});
+document.getElementById("logoutBtn")?.addEventListener("click", () => {
+    serverRequests.sendLogout();
+});
 window.addEventListener("load", serverRequests.loadRequests);
 setInterval(serverRequests.loadRequests, 5000);

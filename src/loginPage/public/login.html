@@ -19,7 +19,7 @@
     </div>
     <div class="title">The Vault</div>
 
-    <form id="loginForm">
+    <form id="loginForm" autocomplete="off">
       <div class="login-field">
         <label for="vaultPassword">Vault password</label>
         <div class="vault-input">
@@ -28,6 +28,8 @@
             type="password"
             placeholder="xxxxxx"
             required
+            name="password"
+            autocomplete="new-password"
           />
           <button
             type="button"

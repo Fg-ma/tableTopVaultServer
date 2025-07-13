@@ -4,6 +4,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 0;
 }
 
 /* Global resets */
@@ -14,36 +15,16 @@ body {
   font-family: "K2D", sans-serif;
 }
 
-/* Header */
-.header {
-  background: var(--tone-black-5);
-  padding-top: 0.75rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-}
-.header h1 {
-  font-family: "Josefin Sans", sans-serif;
-  color: var(--fg-red);
-  font-size: 2.25rem;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  user-select: none;
-  pointer-events: none;
-  cursor: default;
-}
-
 .home-page {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100%;
   height: 100%;
   background-color: var(--tone-black-1);
   color: var(--fg-off-white);
+  flex: 1;
+  overflow: hidden;
 }
 
 /* Main container */
@@ -174,4 +155,138 @@ body {
   background: var(--tone-black-5);
   border-color: var(--tone-black-6);
   transform: translateY(-1px);
+}
+
+/* --- Sidebar Styles --- */
+.sidebar {
+  width: 240px;
+  background-color: var(--fg-white);
+  color: var(--fg-tone-black-1);
+  display: flex;
+  flex-direction: column;
+  justify-content: start;
+  transition: width 0.3s ease;
+  height: 100vh;
+  position: relative;
+  padding: 1rem;
+}
+
+.sidebar.collapsed {
+  width: 60px;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.sidebar-toggle {
+  background: transparent;
+  color: var(--fg-tone-black-1);
+  border: none;
+  cursor: pointer;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.sidebar-nav {
+  flex: 1;
+}
+
+.sidebar-nav ul {
+  list-style: none;
+}
+
+.sidebar-nav ul li {
+  margin: 1rem 0;
+}
+
+.sidebar-nav ul li a {
+  color: var(--fg-tone-black-1);
+  text-decoration: none;
+  font-size: 1.25rem;
+  transition: opacity 0.2s ease;
+}
+.sidebar-nav ul li a:hover {
+  opacity: 0.8;
+}
+
+.logout-btn {
+  background-color: var(--fg-red);
+  border: none;
+  padding: 0.6rem 1rem;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: "K2D", sans-serif;
+  font-size: 1rem;
+  transition: background 0.2s ease;
+}
+.logout-btn:hover {
+  background-color: var(--fg-red-dark);
+}
+
+.logo {
+  height: 2.5rem;
+  width: 2.5rem;
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.sidebar-title {
+  margin-top: 0.25rem;
+  font-family: "Josefin Sans", sans-serif;
+}
+
+.sidebar.collapsed .sidebar-title,
+.sidebar.collapsed .sidebar-nav,
+.sidebar.collapsed .logout-btn,
+.sidebar.collapsed .sidebar-toggle {
+  display: none;
+}
+
+.sidebar.collapsed {
+  padding: 0.5rem;
+  align-items: center;
+}
+
+.sidebar-toggle-tab {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 1rem;
+  width: 2rem;
+  height: 2.5rem;
+  background-color: var(--fg-white);
+  color: var(--fg-tone-black-1);
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  border-top-right-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+}
+
+.sidebar.collapsed .sidebar-toggle-tab {
+  display: block;
+}
+
+.sidebar-toggle img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.sidebar-toggle-tab img {
+  width: 1.5rem;
+  height: 1.5rem;
+  object-fit: contain;
+  display: block;
 }

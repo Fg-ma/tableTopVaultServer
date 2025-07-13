@@ -5,8 +5,4 @@ make
 npx tsc --watch
 npx tsc --build --watch
 
-./VaultServer ../vault.conf
-
-sudo pkill -f nginx
-sudo lsof -i :2222 -i :2223
-~/Desktop/tableTopVaultServer/nginx-1.29.0/sbin/nginx -c ~/Desktop/tableTopVaultServer/nginx/nginx.conf
+sudo ./vault ../vault.conf

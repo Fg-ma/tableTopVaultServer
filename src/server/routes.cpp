@@ -85,6 +85,12 @@ Routes::Routes(uWS::SSLApp& app) {
     }
 
     std::string rawUrl(req->getUrl());
+
+    // Redirect "/loginPage" or "/loginPage/" to index
+    if (rawUrl == "/loginPage" || rawUrl == "/loginPage/") {
+      rawUrl = "/loginPage/public/login.html";
+    }
+
     std::string subPath = rawUrl.substr(std::string("/loginPage/").length());
     auto safePathOpt = Sanitize::instance().sanitizePath(ROOT_DIR + "/src/loginPage", subPath);
     if (!safePathOpt) {
@@ -92,11 +98,6 @@ Routes::Routes(uWS::SSLApp& app) {
       return;
     }
     std::string safePath = *safePathOpt;
-
-    // Redirect "/loginPage" or "/loginPage/" to index
-    if (safePath == ROOT_DIR + "/loginPage" || safePath == ROOT_DIR + "/loginPage/") {
-      safePath = ROOT_DIR + "/src/loginPage/public/login.html";
-    }
 
     std::ifstream file(safePath, std::ios::binary);
 
@@ -136,6 +137,12 @@ Routes::Routes(uWS::SSLApp& app) {
     }
 
     std::string rawUrl(req->getUrl());
+
+    // Redirect "/dashboard" or "/dashboard/" to index
+    if (rawUrl == "/dashboard" || rawUrl == "/dashboard/") {
+      rawUrl = "/dashboard/public/dashboard.html";
+    }
+
     std::string subPath = rawUrl.substr(std::string("/dashboard/").length());
     auto safePathOpt = Sanitize::instance().sanitizePath(ROOT_DIR + "/src/dashboard", subPath);
     if (!safePathOpt) {
@@ -143,11 +150,6 @@ Routes::Routes(uWS::SSLApp& app) {
       return;
     }
     std::string safePath = *safePathOpt;
-
-    // Redirect "/dashboard" or "/dashboard/" to index
-    if (safePath == ROOT_DIR + "/dashboard" || safePath == ROOT_DIR + "/dashboard/") {
-      safePath = ROOT_DIR + "/src/dashboard/public/dashboard.html";
-    }
 
     std::ifstream file(safePath, std::ios::binary);
 
@@ -201,7 +203,6 @@ Routes::Routes(uWS::SSLApp& app) {
 
         if (password.has_value() && password->constantTimeEqual(j["password"].get<std::string>())) {
           SessionInfo sess = ServerUtils::instance().generateSessionToken();
-          sessionList.push_back(std::move(sess));
 
           res->writeStatus("200 OK");
           res->writeHeader("Content-Type", "application/json");
@@ -212,6 +213,8 @@ Routes::Routes(uWS::SSLApp& app) {
                                "; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600");
           std::fill(cookieValue.begin(), cookieValue.end(), '\0');
 
+          sessionList.push_back(std::move(sess));
+
           res->end(json{{"status", "ok"}}.dump());
         } else {
           res->writeStatus("401 Unauthorized")->end("Invalid password");
@@ -220,6 +223,63 @@ Routes::Routes(uWS::SSLApp& app) {
         res->writeStatus("400 Bad Request")->end("Invalid login payload");
       }
     });
+  });
+
+  app.post("/logout", [&](auto* res, auto* req) {
+    if (!ServerUtils::instance().checkInternal(req)) {
+      res->writeStatus("403 Forbidden")->end();
+      return;
+    }
+
+    if (!ServerUtils::instance().checkOrigin(req)) {
+      res->writeStatus("401 Unauthorized")->end();
+      return;
+    }
+
+    std::string_view cookieHeader = req->getHeader("cookie");
+    if (cookieHeader.empty()) {
+      res->writeStatus("400 Bad Request")->end("No session token");
+      return;
+    }
+
+    std::string cookies{cookieHeader};
+    const std::string prefix = "session_token=";
+    std::string token;
+
+    size_t pos = 0;
+    while (pos < cookies.size()) {
+      size_t delimPos = cookies.find(';', pos);
+      std::string cookie =
+          cookies.substr(pos, delimPos == std::string::npos ? std::string::npos : delimPos - pos);
+
+      // Trim whitespace
+      cookie.erase(0, cookie.find_first_not_of(" \t"));
+      cookie.erase(cookie.find_last_not_of(" \t") + 1);
+
+      if (cookie.compare(0, prefix.size(), prefix) == 0) {
+        token = cookie.substr(prefix.size());
+        break;
+      }
+
+      if (delimPos == std::string::npos) break;
+      pos = delimPos + 1;
+    }
+
+    if (token.empty()) {
+      res->writeStatus("400 Bad Request")->end("Session token not found");
+      return;
+    }
+
+    // Remove the session
+    sessionList.erase(
+        std::remove_if(sessionList.begin(), sessionList.end(),
+                       [&token](const SessionInfo& s) { return s.token.constantTimeEqual(token); }),
+        sessionList.end());
+
+    // Invalidate the cookie
+    res->writeHeader("Set-Cookie",
+                     "session_token=deleted; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0");
+    res->writeStatus("200 OK")->end(json{{"status", "logged_out"}}.dump());
   });
 
   app.post("/request", [&](auto* res, auto* req) {

@@ -23,6 +23,14 @@ json Schema::getSchema(const std::string& cmd) {
             "password":{"type":"string","minLength":10}
         }
     })"_json;
+  } else if (cmd == "logout") {
+    return R"({
+        "type":"object",
+        "required":["cmd"],
+        "properties":{
+            "cmd":{"type":"string","const":"login"},
+        }
+    })"_json;
   } else if (cmd == "request") {
     return R"({
         "type":"object",
