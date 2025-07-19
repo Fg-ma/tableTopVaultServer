@@ -148,6 +148,7 @@ int main(int argc, char** argv) {
     sslOpt.key_file_name = config.vault_key.c_str();
     sslOpt.cert_file_name = config.vault_cert.c_str();
     sslOpt.dh_params_file_name = config.vault_dhparam.c_str();
+    sslOpt.ca_file_name = config.ca.c_str();
 
     uWS::SSLApp app({sslOpt});
 

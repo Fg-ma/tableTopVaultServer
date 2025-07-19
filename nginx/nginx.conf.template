@@ -116,8 +116,11 @@ http {
             proxy_ssl_verify_depth 2;
             proxy_ssl_protocols    TLSv1.2 TLSv1.3;
             proxy_ssl_trusted_certificate {{ CA }};
-            proxy_ssl_name {{ IP }};
+            
             proxy_ssl_server_name on;
+            proxy_ssl_name n1.public;
+
+            proxy_ssl_session_reuse off;
 
             proxy_read_timeout  3600s;
             proxy_send_timeout  3600s;
@@ -150,8 +153,10 @@ http {
             proxy_ssl_protocols    TLSv1.2 TLSv1.3;
             proxy_ssl_trusted_certificate {{ CA }};
 
-            proxy_ssl_name {{ IP }};  
             proxy_ssl_server_name on;
+            proxy_ssl_name n1.public;
+
+            proxy_ssl_session_reuse off;
 
             proxy_read_timeout  3600s;
             proxy_send_timeout  3600s;

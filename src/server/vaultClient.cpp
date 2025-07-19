@@ -126,6 +126,10 @@ void VaultClient::vaultLogin() {
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
 
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+  curl_easy_setopt(curl, CURLOPT_CAINFO, config.ca.c_str());
+
   CURLcode res = curl_easy_perform(curl);
 
   sodium_memzero(jsonStr.data(), jsonStr.size());
@@ -141,12 +145,12 @@ void VaultClient::vaultLogin() {
 
 void VaultClient::fetchVaultSecrets(const std::string& tmpfsDir) {
   std::vector<std::string> secrets = {
-      "table-top-vault-server-key.pem",   "table-top-vault-server-dhparam-nginx.pem",
-      "table-top-vault-server-nginx.pem", "table-top-vault-server-dhparam.pem",
-      "table-top-vault-server.pem",       "table-top-vault-server-key-nginx.pem"};
+      "table-top-vault-server.key",       "table-top-vault-server-dhparam-nginx.pem",
+      "table-top-vault-server-nginx.crt", "table-top-vault-server-dhparam.pem",
+      "table-top-vault-server.crt",       "table-top-vault-server-nginx.key"};
 
   for (const auto& secret : secrets) {
-    std::string vaultPath = "secret/data/vault/" + secret;
+    std::string vaultPath = "secret/data/vaultServer/" + secret;
     std::string vaultContent = fetchSecret(vaultPath, "content");
 
     std::string filePath = tmpfsDir + "/" + secret;
@@ -170,7 +174,7 @@ void VaultClient::fetchVaultSecrets(const std::string& tmpfsDir) {
   }
 
   VaultClient::nginxInternalToken =
-      SecureString(fetchSecret("secret/data/vault/nginx-internal-token", "value"));
+      SecureString(fetchSecret("secret/data/vaultServer/nginx-internal-token", "value"));
 
   std::string filePath = tmpfsDir + "/nginx-internal-token";
   std::ofstream out(filePath, std::ios::out | std::ios::trunc);

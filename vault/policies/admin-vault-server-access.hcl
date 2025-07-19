@@ -1,28 +1,28 @@
-path "secret/data/vault/nginx-internal-token" {
+path "secret/data/vaultServer/nginx-internal-token" {
   capabilities = ["read"]
 }
 
-path "secret/data/vault/table-top-vault-server-key.pem" {
+path "secret/data/vaultServer/table-top-vault-server.key" {
   capabilities = ["read"]
 }
 
-path "secret/data/vault/table-top-vault-server-key-nginx.pem" {
+path "secret/data/vaultServer/table-top-vault-server-nginx.key" {
   capabilities = ["read"]
 }
 
-path "secret/data/vault/table-top-vault-server.pem" {
+path "secret/data/vaultServer/table-top-vault-server.crt" {
   capabilities = ["read"]
 }
 
-path "secret/data/vault/table-top-vault-server-nginx.pem" {
+path "secret/data/vaultServer/table-top-vault-server-nginx.crt" {
   capabilities = ["read"]
 }
 
-path "secret/data/vault/table-top-vault-server-dhparam.pem" {
+path "secret/data/vaultServer/table-top-vault-server-dhparam.pem" {
   capabilities = ["read"]
 }
 
-path "secret/data/vault/table-top-vault-server-dhparam-nginx.pem" {
+path "secret/data/vaultServer/table-top-vault-server-dhparam-nginx.pem" {
   capabilities = ["read"]
 }
 
